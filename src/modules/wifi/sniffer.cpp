@@ -48,7 +48,7 @@ int counter = 0;
 int ch = CHANNEL;
 bool fileOpen = false;
 bool isLittleFS = true;
-uint32_t package_counter = 0;
+uint32_t packet_counter = 0;
 
 File file;
 
@@ -120,12 +120,7 @@ void sniffer(void *buf, wifi_promiscuous_pkt_type_t type){
     }
 
     newPacketSD(timestamp, microseconds, len, pkt->payload); // write packet to file
-    package_counter++;
-    tft.setTextSize(FM);
-    tft.setTextColor(FGCOLOR, BGCOLOR);
-    tft.setCursor(170, 100);          
-    tft.print(package_counter);
-
+    packet_counter++;
   }
 
 }
@@ -150,9 +145,10 @@ void event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, voi
 }
 
 /* opens a new file */
+int c = 0;
+
 void openFile2(FS &Fs){
   //searches for the next non-existent file name
-  int c = 0;
   if (!Fs.exists("/BrucePCAP")) Fs.mkdir("/BrucePCAP");
   filename = "/BrucePCAP/" + (String)FILENAME + (String)c + ".pcap";
   while(Fs.open(filename)){
@@ -187,17 +183,12 @@ void sniffer_setup() {
 
   openFile2(*Fs);
   displayRedStripe("Sniffing Started", TFT_WHITE, FGCOLOR );
-  tft.setTextSize(FM);
+  tft.setTextSize(FP);
   tft.setCursor(80, 100);          
-  tft.print("Packets"); 
+  int start = true;
   /* setup wifi */
   nvs_flash_init();
-  //tcpip_adapter_init();             //velho
   ESP_ERROR_CHECK(esp_netif_init());  //novo
-  //ESP_ERROR_CHECK( esp_event_loop_init(event_handler, NULL) );                                          //velho
-  ESP_ERROR_CHECK(esp_event_loop_create_default());                                                       // novo
-  ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));        // novo
-  ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL));       // novo
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK( esp_wifi_init(&cfg) );
   ESP_ERROR_CHECK( esp_wifi_set_storage(WIFI_STORAGE_RAM) );
@@ -209,8 +200,10 @@ void sniffer_setup() {
   esp_wifi_set_channel(ch,secondCh);
 
   Serial.println("Sniffer started!");
+  delay(1000);
 
   if(isLittleFS && !checkLittleFsSize()) goto Exit;
+  packet_counter=0;
 
   for(;;) {
     if (returnToMenu) { // if it happpend, liffle FS is full;
@@ -232,20 +225,19 @@ void sniffer_setup() {
       }
     }
 
-    if(fileOpen && currentTime - lastTime > 1000){
-      file.flush(); //save file
-      lastTime = currentTime; //update time
-      counter++; //add 1 to counter
-    }
-
-    if(checkEscPress()) { // Apertar o botão power dos sticks
+    if(checkSelPress() || start) { // Apertar o botão OK ou ENTER
+      start = false;
       delay(200);
-      file.flush(); //save file
-      file.close();
+      if(file) {
+        file.flush(); //save file
+        file.close();
+      }
+      //closeFile();
       fileOpen = false; //update flag
       Serial.println("==================");
       Serial.println(filename + " saved!");
       Serial.println("==================");
+      drawMainBorder(); // Clear Screen and redraw border
       tft.setTextSize(FP);
       tft.setTextColor(FGCOLOR, BGCOLOR);              
       tft.setCursor(10, 30);          
@@ -254,15 +246,36 @@ void sniffer_setup() {
       tft.println("RAW SNIFFER");          
       tft.setCursor(10, tft.getCursorY()+3);
       tft.println("Saved file into " + FileSys);
-      displayRedStripe(filename, TFT_WHITE, FGCOLOR);
-      delay(5000);
-      returnToMenu=true;
-      goto Exit;
+      tft.setCursor(10, tft.getCursorY()+3);
+      tft.println("File: " + filename);
+      tft.setCursor(10, tft.getCursorY()+10);
+      tft.println(String(BTN_ALIAS) + ": Create new file");
+      //packet_counter=0;
+      c++; //add to filename
+      openFile2(*Fs); //open new file
     }
-  }
 
+    if(fileOpen && currentTime - lastTime > 1000){
+      file.flush(); //save file
+      lastTime = currentTime; //update time
+      drawBatteryStatus();
+      counter++; //add 1 to counter
+      tft.drawCentreString("Packets " + String(packet_counter),WIDTH/2, HEIGHT-26,1);
+    }    
+
+    if(checkEscPress()) { // Apertar o botão power ou Esc
+      returnToMenu=true;
+      esp_wifi_set_promiscuous(false);
+      file.close();
+      break;
+    }
+
+  }
   Exit:
   esp_wifi_set_promiscuous(false);
+  esp_wifi_stop();
+  esp_wifi_set_promiscuous_rx_cb(NULL);
+  esp_wifi_deinit();
   wifiDisconnect();
   delay(1);
 }

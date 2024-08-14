@@ -54,7 +54,7 @@ void webUIMyNet() {
 **********************************************************************/
 void loopOptionsWebUi() {
   // Definição da matriz "Options"
-  std::vector<std::pair<std::string, std::function<void()>>> options = {
+  options = {
       {"my Network", [=]() { webUIMyNet(); }},
       {"AP mode", [=]()    { startWebUi(true); }},
   };
@@ -416,7 +416,7 @@ void startWebUi(bool mode_ap) {
   configureWebServer();
 
   tft.fillScreen(BGCOLOR);
-  tft.drawSmoothRoundRect(5,5,5,5,WIDTH-10,HEIGHT-10,ALCOLOR,BGCOLOR);
+  tft.drawRoundRect(5,5,WIDTH-10,HEIGHT-10,5,ALCOLOR);
   setTftDisplay(0,0,ALCOLOR,FM);
   tft.drawCentreString("BRUCE WebUI",WIDTH/2,7,1);
   String txt;

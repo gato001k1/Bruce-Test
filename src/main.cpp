@@ -44,14 +44,20 @@ String wui_usr="admin";
 String wui_pwd="bruce";
 String ssid;
 String pwd;
-std::vector<std::pair<std::string, std::function<void()>>> options;
+std::vector<Option> options;
 const int bufSize = 4096;
 uint8_t buff[4096] = {0};
 // Protected global variables
 #if defined(HAS_SCREEN)
+  #if defined(M5STACK)
+  #define tft M5.Lcd
+  M5Canvas sprite(&M5.Lcd);
+  M5Canvas draw(&M5.Lcd);  
+  #else
 	TFT_eSPI tft = TFT_eSPI();         // Invoke custom library
 	TFT_eSprite sprite = TFT_eSprite(&tft);
 	TFT_eSprite draw = TFT_eSprite(&tft);
+  #endif
 #else
     SerialDisplayClass tft;
     SerialDisplayClass& sprite = tft;
@@ -97,7 +103,7 @@ void setup_gpio() {
   #elif ! defined(HAS_SCREEN)
     // do nothing
   #elif defined(M5STACK) // init must be done after tft, to make SDCard work
-    // do nothing
+    M5.begin();
   #else
     pinMode(UP_BTN, INPUT);   // Sets the power btn as an INPUT
     pinMode(SEL_BTN, INPUT);
@@ -116,9 +122,9 @@ void setup_gpio() {
 **  Config tft
 *********************************************************************/
 void begin_tft(){
-#if defined(HAS_SCREEN)
+#if defined(HAS_SCREEN) && !defined(M5STACK)
   tft.init();
-#else
+#elif !defined(M5STACK)
   tft.begin(); //115200, 240,320);
   tft.clear();
 #endif
@@ -143,13 +149,20 @@ void boot_screen() {
   tft.drawCentreString("PREDATORY FIRMWARE", WIDTH / 2, HEIGHT+2, SMOOTH_FONT); // will draw outside the screen on non touch devices
 
   int i = millis();
+  char16_t bgcolor = BGCOLOR;
   while(millis()<i+7000) { // boot image lasts for 5 secs
     if((millis()-i>2000) && (millis()-i)<2200) tft.fillRect(0,45,WIDTH,HEIGHT-45,BGCOLOR);
     if((millis()-i>2200) && (millis()-i)<2700) tft.drawRect(2*WIDTH/3,HEIGHT/2,2,2,FGCOLOR);
     if((millis()-i>2700) && (millis()-i)<2900) tft.fillRect(0,45,WIDTH,HEIGHT-45,BGCOLOR);
-    if((millis()-i>2900) && (millis()-i)<3400) tft.drawXBitmap(2*WIDTH/3 - 30 ,5+HEIGHT/2,bruce_small_bits, bruce_small_width, bruce_small_height,TFT_BLACK,FGCOLOR);
-    if((millis()-i>3400) && (millis()-i)<3600) tft.fillRect(0,0,WIDTH,HEIGHT,BGCOLOR);
-    if((millis()-i>3600)) tft.drawXBitmap((WIDTH-238)/2,(HEIGHT-133)/2,bits, bits_width, bits_height,TFT_BLACK,FGCOLOR);
+    #if defined(M5STACK)
+      if((millis()-i>2900) && (millis()-i)<3400) tft.drawXBitmap(2*WIDTH/3 - 30 ,5+HEIGHT/2,bruce_small_bits, bruce_small_width, bruce_small_height,bgcolor,FGCOLOR);
+      if((millis()-i>3400) && (millis()-i)<3600) tft.fillRect(0,0,WIDTH,HEIGHT,BGCOLOR);
+      if((millis()-i>3600)) tft.drawXBitmap((WIDTH-238)/2,(HEIGHT-133)/2,bits, bits_width, bits_height,bgcolor,FGCOLOR);
+    #else
+      if((millis()-i>2900) && (millis()-i)<3400) tft.drawXBitmap(2*WIDTH/3 - 30 ,5+HEIGHT/2,bruce_small_bits, bruce_small_width, bruce_small_height,TFT_BLACK,FGCOLOR);
+      if((millis()-i>3400) && (millis()-i)<3600) tft.fillRect(0,0,WIDTH,HEIGHT,BGCOLOR);
+      if((millis()-i>3600)) tft.drawXBitmap((WIDTH-238)/2,(HEIGHT-133)/2,bits, bits_width, bits_height,TFT_BLACK,FGCOLOR);
+    #endif
 
     if(checkAnyKeyPress())  // If any key or M5 key is pressed, it'll jump the boot screen
     {
@@ -190,6 +203,7 @@ void load_eeprom() {
   RfRx = EEPROM.read(9);
   tmz = EEPROM.read(10);
   FGCOLOR = EEPROM.read(11) << 8 | EEPROM.read(12);
+  RfModule = EEPROM.read(13);
 
   log_i("\
   \n*-*EEPROM Settings*-* \
@@ -202,7 +216,8 @@ void load_eeprom() {
   \n- RF Rx Pin =%03d, \
   \n- Time Zone =%03d, \
   \n- FGColor   =0x%04X \
-  \n*-*-*-*-*-*-*-*-*-*-*", rotation, dimmerSet, bright,IrTx, IrRx, RfTx, RfRx, tmz, FGCOLOR);
+  \n- RfModule  =%03d, \
+  \n*-*-*-*-*-*-*-*-*-*-*", rotation, dimmerSet, bright,IrTx, IrRx, RfTx, RfRx, tmz, FGCOLOR, RfModule);
   if (rotation>3 || dimmerSet>60 || bright>100 || IrTx>100 || IrRx>100 || RfRx>100 || RfTx>100 || tmz>24) {
     rotation = ROTATION;
     dimmerSet=10;
@@ -213,6 +228,7 @@ void load_eeprom() {
     RfRx=GROVE_SCL;
     FGCOLOR=0xA80F;
     tmz=0;
+    RfModule=0;
 
     EEPROM.write(0, rotation);
     EEPROM.write(1, dimmerSet);
@@ -224,6 +240,7 @@ void load_eeprom() {
     EEPROM.write(10, tmz);
     EEPROM.write(11, int((FGCOLOR >> 8) & 0x00FF));
     EEPROM.write(12, int(FGCOLOR & 0x00FF));
+    EEPROM.write(13, RfModule);
     EEPROM.writeString(20,"");
 
     EEPROM.commit();      // Store data to EEPROM
@@ -271,9 +288,6 @@ void setup() {
 
   setup_gpio();
   begin_tft();
-  #if defined(M5STACK)
-  M5.begin(); // Begin after TFT, for SDCard to work
-  #endif
   load_eeprom();
   init_clock();
   

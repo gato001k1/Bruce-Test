@@ -13,6 +13,7 @@
 #include "core/mykeyboard.h"
 #include "core/display.h"
 #include "core/sd_functions.h"
+#include "core/settings.h"
 
 /* Dont touch this */
 #define MAX_RAWBUF_SIZE 300
@@ -26,6 +27,15 @@ IrRead::IrRead() {
 
 void IrRead::setup() {
     irrecv.enableIRIn();
+
+    //Checks if IrRx pin is properly set
+    const std::vector<std::pair<std::string, int>> pins = IR_RX_PINS;
+    int count=0;
+    for (auto pin : pins) {
+        if(pin.second==IrRx) count++; 
+    }
+    if(count==0) gsetIrRxPin(true); // Open dialog to choose IrRx pin
+    
     pinMode(IrRx, INPUT);
     begin();
     return loop();
@@ -157,28 +167,42 @@ void IrRead::save_device() {
     String filename = keyboard("MyDevice", 30, "File name:");
 
     display_banner();
+    
+    FS* fs = nullptr;
 
-    if (write_file(filename)) {
-        displaySuccess("File saved.");
+    bool sdCardAvaible = setupSdCard();
+    bool littleFsAvaible = checkLittleFsSize();
+
+    if (sdCardAvaible && littleFsAvaible) {
+        // ask to choose one
+        options = {
+            {"SD Card", [&]()    { fs=&SD; }},
+            {"LittleFS", [&]()   {  fs=&LittleFS; }},
+        };
+        delay(200);
+        loopOptions(options);
+    } else if (sdCardAvaible) {
+        fs=&SD;
+    } else if (littleFsAvaible) {
+        fs=&LittleFS;
+    };
+
+    if (fs != nullptr && write_file(filename, fs)) {
+        displaySuccess("File saved to " + String((fs == &SD) ? "SD Card" : "LittleFS") + ".");
         signals_read = 0;
         strDeviceContent = "";
+    } else {
+        if (fs == nullptr) {
+            displayError("No storage available.");
+        } else displayError("Error writing file.");
     }
-    else {
-        displayError("Error writing file.");
-    }
+
     delay(1000);
     begin();
 }
 
-bool IrRead::write_file(String filename) {
-    FS *fs;
-    if(setupSdCard()) fs=&SD;
-    else {
-        if(!checkLittleFsSize()) fs=&LittleFS;
-        else {
-            return false;
-        }
-    }
+bool IrRead::write_file(String filename, FS* fs) {
+    if (fs == nullptr) return false;
 
     if (!(*fs).exists("/BruceIR")) (*fs).mkdir("/BruceIR");
     if ((*fs).exists("/BruceIR/" + filename + ".ir")) {

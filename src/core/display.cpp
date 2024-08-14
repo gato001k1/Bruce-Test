@@ -25,6 +25,18 @@ void TouchFooter(uint16_t color) {
   tft.drawCentreString("SEL",WIDTH/2,HEIGHT+4,1);
   tft.drawCentreString("NEXT",5*WIDTH/6,HEIGHT+4,1);
 }
+/***************************************************************************************
+** Function name: TouchFooter
+** Description:   Draw touch screen footer
+***************************************************************************************/
+void MegaFooter(uint16_t color) {
+  tft.drawRoundRect(5,HEIGHT+2,WIDTH-10,43,5,color);
+  tft.setTextColor(color);
+  tft.setTextSize(FM);
+  tft.drawCentreString("Exit",WIDTH/6,HEIGHT+4,1);
+  tft.drawCentreString("UP",WIDTH/2,HEIGHT+4,1);
+  tft.drawCentreString("DOWN",5*WIDTH/6,HEIGHT+4,1);
+}
 
 /***************************************************************************************
 ** Function name: resetTftDisplay
@@ -182,24 +194,20 @@ void padprintln(double n, int digits, int16_t padx) {
 **  Function: loopOptions
 **  Where you choose among the options in menu
 **********************************************************************/
-void loopOptions(const std::vector<std::pair<std::string, std::function<void()>>>& options, bool bright, bool submenu, String subText){
+int loopOptions(std::vector<Option>& options, bool bright, bool submenu, String subText,int index){
   bool redraw = true;
-  int index = 0;
+  int menuSize = options.size();
+  if(options.size()>MAX_MENU_SIZE) {
+    menuSize = MAX_MENU_SIZE;
+    }
+  if(index>0) tft.fillRoundRect(WIDTH*0.10,HEIGHT/2-menuSize*(FM*8+4)/2 -5,WIDTH*0.8,(FM*8+4)*menuSize+10,5,BGCOLOR);
+  if(index>=options.size()) index=0;
   while(1){
     if (redraw) {
       if(submenu) drawSubmenu(index, options, subText);
       else drawOptions(index, options, FGCOLOR, BGCOLOR);
       if(bright){
-        #if defined(STICK_C_PLUS2) || defined(CARDPUTER)
-        int bl = MINBRIGHT + round(((255 - MINBRIGHT) * (4 - index) * 0.25)); // 4 is the number of options
-        analogWrite(BACKLIGHT, bl);
-        #elif defined(STICK_C_PLUS)
-        axp192.ScreenBreath(100*(4 - index) * 0.25);  // 4 is the number of options
-        //#elif defined(NEW_DEVICE)
-
-        #else
-
-        #endif
+        setBrightness(String(options[index].label.c_str()).toInt(),false);
       }
       redraw=false;
       delay(200);
@@ -223,7 +231,8 @@ void loopOptions(const std::vector<std::pair<std::string, std::function<void()>>
 
     /* Select and run function */
     if(checkSelPress()) {
-      options[index].second();
+      Serial.println("Selecionado " + String(options[index].label.c_str()));
+      options[index].operation();
       break;
     }
 
@@ -233,7 +242,7 @@ void loopOptions(const std::vector<std::pair<std::string, std::function<void()>>
       if(pressed_number>=0) {
         if(index == pressed_number) {
           // press 2 times the same number to confirm
-          options[index].second();
+          options[index].operation();
           break;
         }
         // else only highlight the option
@@ -244,6 +253,7 @@ void loopOptions(const std::vector<std::pair<std::string, std::function<void()>>
     #endif
   }
   delay(200);
+  return index;
 }
 
 /***************************************************************************************
@@ -265,7 +275,7 @@ void progressHandler(int progress, size_t total) {
 ** Function name: drawOptions
 ** Description:   Função para desenhar e mostrar as opçoes de contexto
 ***************************************************************************************/
-void drawOptions(int index,const std::vector<std::pair<std::string, std::function<void()>>>& options, uint16_t fgcolor, uint16_t bgcolor) {
+void drawOptions(int index,std::vector<Option>& options, uint16_t fgcolor, uint16_t bgcolor) {
     int menuSize = options.size();
     if(options.size()>MAX_MENU_SIZE) {
       menuSize = MAX_MENU_SIZE;
@@ -285,10 +295,13 @@ void drawOptions(int index,const std::vector<std::pair<std::string, std::functio
     if(index>=MAX_MENU_SIZE) init=index-MAX_MENU_SIZE+1;
     for(i=0;i<menuSize;i++) {
       if(i>=init) {
+        if(options[i].selected) tft.setTextColor(fgcolor-0x1111,bgcolor); // if selected, change Text color
+        else tft.setTextColor(fgcolor,bgcolor);
+
         String text="";
         if(i==index) text+=">";
         else text +=" ";
-        text += String(options[i].first.c_str()) + "              ";
+        text += String(options[i].label.c_str()) + "              ";
         tft.setCursor(WIDTH*0.10+5,tft.getCursorY()+4);
         tft.println(text.substring(0,(WIDTH*0.8 - 10)/(LW*FM) - 1));
         cont++;
@@ -307,7 +320,7 @@ void drawOptions(int index,const std::vector<std::pair<std::string, std::functio
 ** Function name: drawOptions
 ** Description:   Função para desenhar e mostrar as opçoes de contexto
 ***************************************************************************************/
-void drawSubmenu(int index,const std::vector<std::pair<std::string, std::function<void()>>>& options, String system) {
+void drawSubmenu(int index,std::vector<Option>& options, String system) {
     int menuSize = options.size();
     if(index==0) drawMainBorder();
     tft.setTextColor(FGCOLOR,BGCOLOR);
@@ -321,26 +334,26 @@ void drawSubmenu(int index,const std::vector<std::pair<std::string, std::functio
     if (index-1>=0) {
       tft.setTextSize(FM);
       tft.setTextColor(FGCOLOR-0x2000);
-      tft.drawCentreString(options[index-1].first.c_str(),WIDTH/2, 42,SMOOTH_FONT);
+      tft.drawCentreString(options[index-1].label.c_str(),WIDTH/2, 42+(HEIGHT-134)/2,SMOOTH_FONT);
     } else {
       tft.setTextSize(FM);
       tft.setTextColor(FGCOLOR-0x2000);
-      tft.drawCentreString(options[menuSize-1].first.c_str(),WIDTH/2, 42,SMOOTH_FONT);
+      tft.drawCentreString(options[menuSize-1].label.c_str(),WIDTH/2, 42+(HEIGHT-134)/2,SMOOTH_FONT);
     }
       tft.setTextSize(FG);
       tft.setTextColor(FGCOLOR);
-      tft.drawCentreString(options[index].first.c_str(),WIDTH/2, 67,SMOOTH_FONT);
+      tft.drawCentreString(options[index].label.c_str(),WIDTH/2, 67+(HEIGHT-134)/2,SMOOTH_FONT);
 
     if (index+1<menuSize) {
       tft.setTextSize(FM);
       tft.setTextColor(FGCOLOR-0x2000);
-      tft.drawCentreString(options[index+1].first.c_str(),WIDTH/2, 102,SMOOTH_FONT);
+      tft.drawCentreString(options[index+1].label.c_str(),WIDTH/2, 102+(HEIGHT-134)/2,SMOOTH_FONT);
     } else {
       tft.setTextSize(FM);
       tft.setTextColor(FGCOLOR-0x2000);
-      tft.drawCentreString(options[0].first.c_str(),WIDTH/2, 102,SMOOTH_FONT);
+      tft.drawCentreString(options[0].label.c_str(),WIDTH/2, 102+(HEIGHT-134)/2,SMOOTH_FONT);
     }
-    tft.drawFastHLine(WIDTH/2 - options[index].first.size()*FG*LW/2, 67+FG*LH,options[index].first.size()*FG*LW,FGCOLOR);
+    tft.drawFastHLine(WIDTH/2 - options[index].label.size()*FG*LW/2, 67+FG*LH+(HEIGHT-134)/2,options[index].label.size()*FG*LW,FGCOLOR);
     tft.fillRect(WIDTH-5,0,5,HEIGHT,BGCOLOR);
     tft.fillRect(WIDTH-5,index*HEIGHT/menuSize,5,HEIGHT/menuSize,FGCOLOR);
 
@@ -460,18 +473,15 @@ void drawBatteryStatus() {
 ** Description:   Draws a padlock when connected
 ***************************************************************************************/
 void drawWireguardStatus(int x, int y) {
-  draw.deleteSprite();
-  draw.createSprite(20,17);
+  tft.fillRect(x,y,20,17,BGCOLOR);
     if(isConnectedWireguard){
-        draw.drawRoundRect(10, 0, 10, 16, 5, TFT_GREEN);
-        draw.fillRoundRect(10, 12, 10, 5, 0, TFT_GREEN);
+        tft.drawRoundRect(10+x, 0+y, 10, 16, 5, TFT_GREEN);
+        tft.fillRoundRect(10+x, 12+y, 10, 5, 0, TFT_GREEN);
     } else {
-    draw.drawRoundRect(1, 0, 10, 16, 5, FGCOLOR);
-    draw.fillRoundRect(0, 12, 10, 5, 0, BGCOLOR);
-    draw.fillRoundRect(10, 12, 10, 5, 0, FGCOLOR);
+    tft.drawRoundRect(1+x, 0+y, 10, 16, 5, FGCOLOR);
+    tft.fillRoundRect(0+x, 12+y, 10, 5, 0, BGCOLOR);
+    tft.fillRoundRect(10+x, 12+y, 10, 5, 0, FGCOLOR);
     }
-  draw.pushSprite(x,y);
-  draw.deleteSprite();
 
 }
 
@@ -479,7 +489,7 @@ void drawWireguardStatus(int x, int y) {
 ** Function name: listFiles
 ** Description:   Função para desenhar e mostrar o menu principal
 ***************************************************************************************/
-#define MAX_ITEMS 7
+#define MAX_ITEMS (int)(HEIGHT-20)/(LH*2)
 void listFiles(int index, String fileList[][3]) {
     if(index==0){
       tft.fillScreen(BGCOLOR);
@@ -521,41 +531,31 @@ void listFiles(int index, String fileList[][3]) {
 // desenhos do menu principal, sprite "draw" com 80x80 pixels
 
 void drawWifiSmall(int x, int y) {
-  draw.deleteSprite();
-  draw.createSprite(17,17);
-  draw.fillSprite(BGCOLOR);
-  draw.fillCircle(9,14,2,FGCOLOR);
-  draw.drawSmoothArc(9,14,5,7,130,230,FGCOLOR, BGCOLOR,true);
-  draw.drawSmoothArc(9,14,11,13,130,230,FGCOLOR, BGCOLOR,true);
-  draw.pushSprite(x,y);
-  draw.deleteSprite();
+  tft.fillRect(x,y,17,17,BGCOLOR);
+  tft.fillCircle(9,14,2,FGCOLOR);
+  tft.drawArc(9+x,14+y,5,7,130,230,FGCOLOR, BGCOLOR);
+  tft.drawArc(9+x,14+y,11,13,130,230,FGCOLOR, BGCOLOR);
 }
 
 void drawWifi(int x, int y) {
   tft.fillRect(x,y,80,80,BGCOLOR);
-  tft.fillSmoothCircle(40+x,60+y,6,FGCOLOR);
-  tft.drawSmoothArc(40+x,60+y,26,20,130,230,FGCOLOR, BGCOLOR,true);
-  tft.drawSmoothArc(40+x,60+y,46,40,130,230,FGCOLOR, BGCOLOR,true);
+  tft.fillCircle(40+x,60+y,6,FGCOLOR);
+  tft.drawArc(40+x,60+y,26,20,130,230,FGCOLOR, BGCOLOR);
+  tft.drawArc(40+x,60+y,46,40,130,230,FGCOLOR, BGCOLOR);
 }
 
 void drawBLESmall(int x, int y) {
-  draw.deleteSprite();
-  draw.createSprite(17,17);
-  draw.fillSprite(BGCOLOR);
-
-  draw.drawWideLine(8, 8, 4, 5, 2, FGCOLOR,BGCOLOR);
-  draw.drawWideLine(8, 8, 4, 13,2, FGCOLOR,BGCOLOR);
-  draw.drawTriangle(8, 8, 8, 0,13,4,FGCOLOR);
-  draw.drawTriangle(8, 8, 8,16,13,12,FGCOLOR);
-
-  draw.pushSprite(x,y);
-  draw.deleteSprite();
+  tft.fillRect(x,y,17,17,BGCOLOR);
+  tft.drawWideLine(8+x, 8+y, 4+x, 5+y, 2, FGCOLOR,BGCOLOR);
+  tft.drawWideLine(8+x, 8+y, 4+x,13+y, 2, FGCOLOR,BGCOLOR);
+  tft.drawTriangle(8+x, 8+y, 8+x, 0+y,13,4,FGCOLOR);
+  tft.drawTriangle(8+x, 8+y, 8+x,16+y,13,12,FGCOLOR);
 }
 
 void drawBLE(int x, int y) {
   tft.fillRect(x,y,80,80,BGCOLOR);
-  tft.drawWideLine(40+x,53+y,2+x,26+y,5,FGCOLOR,BGCOLOR);
-  tft.drawWideLine(40+x,26+y,2+x,53+y,5,FGCOLOR,BGCOLOR);
+  tft.drawWideLine(40+x,53+y,5+x,26+y,5,FGCOLOR,BGCOLOR);
+  tft.drawWideLine(40+x,26+y,5+x,53+y,5,FGCOLOR,BGCOLOR);
   tft.drawWideLine(40+x,53+y,20+x,68+y,5,FGCOLOR,BGCOLOR);
   tft.drawWideLine(40+x,26+y,20+x,12+y,5,FGCOLOR,BGCOLOR);
   tft.drawWideLine(20+x,12+y,20+x,68+y,5,FGCOLOR,BGCOLOR);
@@ -588,7 +588,7 @@ void drawCfg(int x, int y) {
 
 void drawRf(int x, int y) {
   tft.fillRect(x,y,80,80,BGCOLOR);
-  tft.fillSmoothCircle(40+x,30+y,7,FGCOLOR);
+  tft.fillCircle(40+x,30+y,7,FGCOLOR);
   tft.fillTriangle(40+x,40+y,25+x,70+y,55+x,70+y,FGCOLOR);
   tft.drawArc(40+x,30+y,18,15,40,140,FGCOLOR,BGCOLOR);
   tft.drawArc(40+x,30+y,28,25,40,140,FGCOLOR,BGCOLOR);
@@ -610,8 +610,8 @@ void drawRfid(int x, int y) {
 
 void drawIR(int x, int y) {
   tft.fillRect(x,y,80,80,BGCOLOR);
-  tft.fillSmoothRoundRect(11+x,10+y,10,60,2,FGCOLOR,BGCOLOR);
-  tft.fillSmoothRoundRect(21+x,20+y,10,40,2,FGCOLOR,BGCOLOR);
+  tft.fillRoundRect(11+x,10+y,10,60,2,FGCOLOR);
+  tft.fillRoundRect(21+x,20+y,10,40,2,FGCOLOR);
   tft.drawCircle(31+x,40+y,7,FGCOLOR);
   tft.drawArc(31+x,40+y,18,15,220,320,FGCOLOR,BGCOLOR);
   tft.drawArc(31+x,40+y,28,25,220,320,FGCOLOR,BGCOLOR);
@@ -620,7 +620,7 @@ void drawIR(int x, int y) {
 
 void drawOther(int x, int y) {
   tft.fillRect(x,y,80,80,BGCOLOR);
-  tft.fillSmoothCircle(40+x,40+y,7,FGCOLOR);
+  tft.fillCircle(40+x,40+y,7,FGCOLOR);
   tft.drawArc(40+x,40+y,18,15,0,340,FGCOLOR,BGCOLOR);
   tft.drawArc(40+x,40+y,25,22,20,360,FGCOLOR,BGCOLOR);
   tft.drawArc(40+x,40+y,32,29,0,200,FGCOLOR,BGCOLOR);
