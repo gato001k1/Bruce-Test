@@ -7,6 +7,12 @@
 #include <string>
 #include "esp32-hal-psram.h"
 
+
+
+SPIClass sdcardSPI;
+#if defined(STICK_C_PLUS) || defined(STICK_C_PLUS2)
+SPIClass CC_NRF_SPI;
+#endif
 // Public Globals Variables
 unsigned long previousMillis = millis();
 int prog_handler;    // 0 - Flash, 1 - LittleFS, 3 - Download
@@ -17,9 +23,13 @@ int RfTx;
 int RfRx;
 int RfModule=0;  // 0 - single-pinned, 1 - CC1101+SPI
 float RfFreq=433.92;
+int RfidModule=M5_RFID2_MODULE;
+String cachedPassword="";
 int dimmerSet;
 int bright=100;
 int tmz=3;
+int devMode=0;
+bool interpreter_start = false;
 bool sdcardMounted = false;
 bool gpsConnected = false;
 bool wifiConnected = false;
@@ -49,10 +59,10 @@ const int bufSize = 4096;
 uint8_t buff[4096] = {0};
 // Protected global variables
 #if defined(HAS_SCREEN)
-  #if defined(M5STACK)
+  #if defined(M5STACK) && !defined(CORE2) && !defined(CORE)
   #define tft M5.Lcd
   M5Canvas sprite(&M5.Lcd);
-  M5Canvas draw(&M5.Lcd);  
+  M5Canvas draw(&M5.Lcd);
   #else
 	TFT_eSPI tft = TFT_eSPI();         // Invoke custom library
 	TFT_eSprite sprite = TFT_eSprite(&tft);
@@ -79,7 +89,7 @@ uint8_t buff[4096] = {0};
 #include "core/serialcmds.h"
 #include "modules/others/audio.h"  // for playAudioFile
 #include "modules/rf/rf.h"  // for initCC1101once
-
+#include "modules/bjs_interpreter/interpreter.h" // for JavaScript interpreter
 
 /*********************************************************************
 **  Function: setup_gpio
@@ -91,7 +101,7 @@ void setup_gpio() {
     pinMode(SEL_BTN, INPUT);
     pinMode(DW_BTN, INPUT);
     pinMode(4, OUTPUT);     // Keeps the Stick alive after take off the USB cable
-    digitalWrite(4,HIGH);   // Keeps the Stick alive after take off the USB cable    
+    digitalWrite(4,HIGH);   // Keeps the Stick alive after take off the USB cable
   #elif defined(STICK_C_PLUS)
     pinMode(SEL_BTN, INPUT);
     pinMode(DW_BTN, INPUT);
@@ -103,7 +113,7 @@ void setup_gpio() {
   #elif ! defined(HAS_SCREEN)
     // do nothing
   #elif defined(M5STACK) // init must be done after tft, to make SDCard work
-    M5.begin();
+    //M5.begin();
   #else
     pinMode(UP_BTN, INPUT);   // Sets the power btn as an INPUT
     pinMode(SEL_BTN, INPUT);
@@ -113,7 +123,7 @@ void setup_gpio() {
   #if defined(BACKLIGHT)
   pinMode(BACKLIGHT, OUTPUT);
   #endif
-  initCC1101once(); // Sets GPIO in the CC1101 lib
+  initCC1101once(&sdcardSPI); // Sets GPIO in the CC1101 lib
 }
 
 
@@ -124,9 +134,12 @@ void setup_gpio() {
 void begin_tft(){
 #if defined(HAS_SCREEN) && !defined(M5STACK)
   tft.init();
-#elif !defined(M5STACK)
-  tft.begin(); //115200, 240,320);
-  tft.clear();
+#elif defined(CORE2) || defined(CORE)
+  M5.begin();
+  tft.init();
+#elif defined(M5STACK)
+  M5.begin();
+  
 #endif
   rotation = gsetRotation();
   tft.setRotation(rotation);
@@ -151,6 +164,7 @@ void boot_screen() {
   int i = millis();
   char16_t bgcolor = BGCOLOR;
   while(millis()<i+7000) { // boot image lasts for 5 secs
+  #if !defined(LITE_VERSION)
     if((millis()-i>2000) && (millis()-i)<2200) tft.fillRect(0,45,WIDTH,HEIGHT-45,BGCOLOR);
     if((millis()-i>2200) && (millis()-i)<2700) tft.drawRect(2*WIDTH/3,HEIGHT/2,2,2,FGCOLOR);
     if((millis()-i>2700) && (millis()-i)<2900) tft.fillRect(0,45,WIDTH,HEIGHT-45,BGCOLOR);
@@ -163,7 +177,7 @@ void boot_screen() {
       if((millis()-i>3400) && (millis()-i)<3600) tft.fillRect(0,0,WIDTH,HEIGHT,BGCOLOR);
       if((millis()-i>3600)) tft.drawXBitmap((WIDTH-238)/2,(HEIGHT-133)/2,bits, bits_width, bits_height,TFT_BLACK,FGCOLOR);
     #endif
-
+  #endif
     if(checkAnyKeyPress())  // If any key or M5 key is pressed, it'll jump the boot screen
     {
       tft.fillScreen(TFT_BLACK);
@@ -172,18 +186,11 @@ void boot_screen() {
     }
   }
 
-#if defined(BUZZ_PIN)
-  // Bip M5 just because it can. Does not bip if splashscreen is bypassed
-  _tone(5000, 50);
-  delay(200);
-  _tone(5000, 50);
-/*  2fix: menu infinite loop */
-#elif defined(HAS_NS4168_SPKR)
-  // play a boot sound
-  if(SD.exists("/boot.wav")) playAudioFile(&SD, "/boot.wav");
-  else if(LittleFS.exists("/boot.wav")) playAudioFile(&LittleFS, "/boot.wav");
-  setup_gpio(); // temp fix for menu inf. loop
-#endif
+  // Clear splashscreen
+  tft.fillScreen(TFT_BLACK);
+
+  // Clear splashscreen
+  tft.fillScreen(TFT_BLACK);
 }
 
 
@@ -204,6 +211,7 @@ void load_eeprom() {
   tmz = EEPROM.read(10);
   FGCOLOR = EEPROM.read(11) << 8 | EEPROM.read(12);
   RfModule = EEPROM.read(13);
+  RfidModule = EEPROM.read(14);
 
   log_i("\
   \n*-*EEPROM Settings*-* \
@@ -217,7 +225,8 @@ void load_eeprom() {
   \n- Time Zone =%03d, \
   \n- FGColor   =0x%04X \
   \n- RfModule  =%03d, \
-  \n*-*-*-*-*-*-*-*-*-*-*", rotation, dimmerSet, bright,IrTx, IrRx, RfTx, RfRx, tmz, FGCOLOR, RfModule);
+  \n- RfidModule=%03d, \
+  \n*-*-*-*-*-*-*-*-*-*-*", rotation, dimmerSet, bright,IrTx, IrRx, RfTx, RfRx, tmz, FGCOLOR, RfModule, RfidModule);
   if (rotation>3 || dimmerSet>60 || bright>100 || IrTx>100 || IrRx>100 || RfRx>100 || RfTx>100 || tmz>24) {
     rotation = ROTATION;
     dimmerSet=10;
@@ -229,6 +238,7 @@ void load_eeprom() {
     FGCOLOR=0xA80F;
     tmz=0;
     RfModule=0;
+    RfidModule=M5_RFID2_MODULE;
 
     EEPROM.write(0, rotation);
     EEPROM.write(1, dimmerSet);
@@ -241,6 +251,7 @@ void load_eeprom() {
     EEPROM.write(11, int((FGCOLOR >> 8) & 0x00FF));
     EEPROM.write(12, int(FGCOLOR & 0x00FF));
     EEPROM.write(13, RfModule);
+    EEPROM.write(14, RfidModule);
     EEPROM.writeString(20,"");
 
     EEPROM.commit();      // Store data to EEPROM
@@ -263,6 +274,27 @@ void init_clock() {
     _rtc.GetBm8563Time();
     _rtc.GetTime(&_time);
   #endif
+}
+
+/*********************************************************************
+**  Function: startup_sound
+**  Play sound or tone depending on device hardware
+*********************************************************************/
+void startup_sound() {
+#if !defined(LITE_VERSION)
+  #if defined(BUZZ_PIN)
+    // Bip M5 just because it can. Does not bip if splashscreen is bypassed
+    _tone(5000, 50);
+    delay(200);
+    _tone(5000, 50);
+  /*  2fix: menu infinite loop */
+  #elif defined(HAS_NS4168_SPKR)
+    // play a boot sound
+    if(SD.exists("/boot.wav")) playAudioFile(&SD, "/boot.wav");
+    else if(LittleFS.exists("/boot.wav")) playAudioFile(&LittleFS, "/boot.wav");
+    setup_gpio(); // temp fix for menu inf. loop
+  #endif
+#endif
 }
 
 /*********************************************************************
@@ -290,11 +322,13 @@ void setup() {
   begin_tft();
   load_eeprom();
   init_clock();
-  
+
   if(!LittleFS.begin(true)) { LittleFS.format(), LittleFS.begin();}
-  
+
   boot_screen();
-  
+  setupSdCard();
+  startup_sound();
+
   #if ! defined(HAS_SCREEN)
     // start a task to handle serial commands while the webui is running
     startSerialCommandsHandlerTask();
@@ -315,14 +349,23 @@ void loop() {
   #endif
   bool redraw = true;
   int index = 0;
-  int opt = 8;
+  int opt = 9;
 
+  // Interpreter must be ran in the loop() function, otherwise it breaks
+  // called by 'stack canary watchpoint triggered (loopTask)'
+#if !defined(CORE) && !defined(CORE2)
+  if(interpreter_start) {
+    interpreter();
+    previousMillis = millis(); // ensure that will not dim screen when get back to menu
+    goto END;
+  }
+#endif
   tft.fillRect(0,0,WIDTH,HEIGHT,BGCOLOR);
-  setupSdCard();
   getConfigs();
- 
+
 
   while(1){
+    if(interpreter_start) goto END;
     if (returnToMenu) {
       returnToMenu = false;
       tft.fillScreen(BGCOLOR); //fix any problem with the mainMenu screen when coming back from submenus or functions
@@ -377,6 +420,8 @@ void loop() {
       tft.print("BRUCE " + String(BRUCE_VERSION));
     }
   }
+  END:
+  delay(1);
 }
 #else
 
@@ -387,7 +432,7 @@ void loop() {
 void loop() {
   setupSdCard();
   getConfigs();
-  
+
   if(!wifiConnected) {
     Serial.println("wifiConnect");
     wifiConnect("",0,true);  // TODO: read mode from settings file

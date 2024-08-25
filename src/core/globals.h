@@ -9,7 +9,7 @@ extern char16_t FGCOLOR;
 #include <Arduino.h>
 #include <functional>
 #include <vector>
-//#include <SPIFFS.h>
+#include <SPI.h>
 #include <LittleFS.h>
 #include <NTPClient.h>
 #include <Timezone.h>
@@ -31,12 +31,18 @@ extern char16_t FGCOLOR;
   extern Keyboard_Class Keyboard;
 #endif
 
-#if defined(M5STACK)
+#if defined(CORE2)
+  #include <M5Core2.h>
+#elif defined(CORE)
+  #include <M5Stack.h>
+#elif defined(M5STACK)
   #include <M5Unified.h>
+
 #endif
+
 // Declaração dos objetos TFT
 #if defined(HAS_SCREEN)
-  #if defined(M5STACK)
+  #if defined(M5STACK) && !defined(CORE2) && !defined(CORE)
     #define tft M5.Lcd
     extern M5Canvas sprite;
     extern M5Canvas draw;
@@ -53,8 +59,13 @@ extern char16_t FGCOLOR;
     extern SerialDisplayClass& draw;
 #endif
 
-extern char timeStr[10];
+extern bool interpreter_start;
 
+extern char timeStr[10];
+extern SPIClass sdcardSPI;
+#if defined(STICK_C_PLUS) || defined(STICK_C_PLUS2)
+extern SPIClass CC_NRF_SPI;
+#endif
 extern bool clock_set;
 extern time_t localTime;
 extern struct tm* timeInfo;
@@ -109,12 +120,17 @@ extern int RfModule;
 
 extern float RfFreq;
 
+extern int RfidModule;
+
+extern String cachedPassword;
+
 // Screen sleep control variables
 extern unsigned long previousMillis;
 extern bool isSleeping;
 extern bool isScreenOff;
 extern bool dimmer;
 extern int dimmerSet;
+extern int devMode;
 
 void readFGCOLORFromEEPROM();
 
@@ -130,6 +146,12 @@ extern bool dimmer;
 extern  String wui_usr;
 extern  String wui_pwd;
 extern int tmz;
+
+enum RFIDModules {
+  M5_RFID2_MODULE  = 0,
+  PN532_I2C_MODULE = 1,
+  PN532_SPI_MODULE = 2,
+};
 
 void setup_gpio();
 
