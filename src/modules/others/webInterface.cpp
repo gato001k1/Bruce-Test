@@ -1,65 +1,34 @@
-#include "core/globals.h"
+#include <globals.h>
 #include "core/sd_functions.h" // using sd functions called to rename and manage sd files
 #include "core/wifi_common.h"  // using common wifisetup
 #include "core/mykeyboard.h"   // using keyboard when calling rename
 #include "core/display.h"      // using displayRedStripe as error msg
 #include "core/serialcmds.h"
+#include "core/passwords.h"
+#include "core/settings.h"
 #include "webInterface.h"
 
 
-struct Config {
-  String httpuser;
-  String httppassword;       // password to access web admin
-  int webserverporthttp;     // http port number for web admin
-};
-
 File uploadFile;
   // WiFi as a Client
-String default_httpuser = "admin";
-String default_httppassword = "bruce";
 const int default_webserverporthttp = 80;
 
 //WiFi as an Access Point
 IPAddress AP_GATEWAY(172, 0, 0, 1);  // Gateway
 
-Config config;                        // configuration
-
 WebServer* server=nullptr;               // initialise webserver
 const char* host = "bruce";
-const String fileconf = "/bruce.txt";
 String uploadFolder="";
-
-
-
-/**********************************************************************
-**  Function: webUIMyNet
-**  Display options to launch the WebUI
-**********************************************************************/
-void webUIMyNet() {
-  if (WiFi.status() != WL_CONNECTED) {
-    if(wifiConnectMenu()) startWebUi(false);
-    else {
-      displayError("Wifi Offline");
-    }
-  } else {
-    //If it is already connected, just start the network
-    startWebUi(false);
-  }
-  // On fail installing will run the following line
-}
-
 
 /**********************************************************************
 **  Function: loopOptionsWebUi
 **  Display options to launch the WebUI
 **********************************************************************/
 void loopOptionsWebUi() {
-  // Definição da matriz "Options"
   options = {
-      {"my Network", [=]() { webUIMyNet(); }},
+      {"my Network", [=]() { startWebUi(false); }},
       {"AP mode", [=]()    { startWebUi(true); }},
   };
-  delay(200);
 
   loopOptions(options);
   // On fail installing will run the following line
@@ -104,6 +73,7 @@ String listFiles(FS fs, bool ishtml, String folder, bool isLittleFS) {
 
   if (folder=="/") folder = "";
   while (foundfile) {
+    if(ESP.getFreeHeap()<1024) break;
     if(foundfile.isDirectory()) {
       if (ishtml) {
         returnText += "<tr align='left'><td><a onclick=\"listFilesButton('"+ String(foundfile.path()) + "', '"+ fileSys +"')\" href='javascript:void(0);'>\n" + String(foundfile.name()) + "</a></td>";
@@ -124,6 +94,7 @@ String listFiles(FS fs, bool ishtml, String folder, bool isLittleFS) {
   root = fs.open(folder);
   foundfile = root.openNextFile();
   while (foundfile) {
+    if(ESP.getFreeHeap()<1024) break;
     if(!(foundfile.isDirectory())) {
       if (ishtml) {
         returnText += "<tr align='left'><td>" + String(foundfile.name());
@@ -133,11 +104,15 @@ String listFiles(FS fs, bool ishtml, String folder, bool isLittleFS) {
         //if (String(foundfile.name()).substring(String(foundfile.name()).lastIndexOf('.') + 1).equalsIgnoreCase("bin")) returnText+= "<i class=\"gg-arrow-up-r\" onclick=\"startUpdate(\'" + String(foundfile.path()) + "\')\"></i>&nbsp&nbsp\n";
         if (String(foundfile.name()).substring(String(foundfile.name()).lastIndexOf('.') + 1).equalsIgnoreCase("sub")) returnText+= "<i class=\"gg-data\" onclick=\"sendSubFile(\'" + String(foundfile.path()) + "\')\"></i>&nbsp&nbsp\n";
         if (String(foundfile.name()).substring(String(foundfile.name()).lastIndexOf('.') + 1).equalsIgnoreCase("ir")) returnText+= "<i class=\"gg-data\" onclick=\"sendIrFile(\'" + String(foundfile.path()) + "\')\"></i>&nbsp&nbsp\n";
+        if (String(foundfile.name()).substring(String(foundfile.name()).lastIndexOf('.') + 1).equalsIgnoreCase("js")) returnText+= "<i class=\"gg-data\" onclick=\"runJsFile(\'" + String(foundfile.path()) + "\')\"></i>&nbsp&nbsp\n";
+        if (String(foundfile.name()).substring(String(foundfile.name()).lastIndexOf('.') + 1).equalsIgnoreCase("bjs")) returnText+= "<i class=\"gg-data\" onclick=\"runJsFile(\'" + String(foundfile.path()) + "\')\"></i>&nbsp&nbsp\n";
         #if defined(USB_as_HID)
-          if (String(foundfile.name()).substring(String(foundfile.name()).lastIndexOf('.') + 1).equalsIgnoreCase("txt")) returnText+= "<i class=\"gg-data\" onclick=\"sendBadusbFile(\'" + String(foundfile.path()) + "\')\"></i>&nbsp&nbsp\n";
+          if (String(foundfile.name()).substring(String(foundfile.name()).lastIndexOf('.') + 1).equalsIgnoreCase("txt")) returnText+= "<i class=\"gg-data\" onclick=\"runBadusbFile(\'" + String(foundfile.path()) + "\')\"></i>&nbsp&nbsp\n";
+          if (String(foundfile.name()).substring(String(foundfile.name()).lastIndexOf('.') + 1).equalsIgnoreCase("enc")) returnText+= "<i class=\"gg-data\" onclick=\"decryptAndType(\'" + String(foundfile.path()) + "\')\"></i>&nbsp&nbsp\n";
         #endif
         returnText += "<i class=\"gg-rename\"  onclick=\"renameFile(\'" + String(foundfile.path()) + "\', \'" + String(foundfile.name()) + "\')\"></i>&nbsp&nbsp\n";
-        returnText += "<i class=\"gg-trash\"  onclick=\"downloadDeleteButton(\'" + String(foundfile.path()) + "\', \'delete\')\"></i></td></tr>\n\n";
+        returnText += "<i class=\"gg-trash\"  onclick=\"downloadDeleteButton(\'" + String(foundfile.path()) + "\', \'delete\')\"></i>&nbsp&nbsp\n";
+        returnText += "<i class=\"gg-pen\"  onclick=\"downloadDeleteButton(\'" + String(foundfile.path()) + "\', \'edit\')\"></i></td></tr>\n\n";
       } else {
         returnText += "File: " + String(foundfile.name()) + " Size: " + humanReadableSize(foundfile.size()) + "\n";
       }
@@ -182,7 +157,7 @@ String processor(const String& var) {
 **********************************************************************/
 bool checkUserWebAuth() {
   bool isAuthenticated = false;
-  if (server->authenticate(config.httpuser.c_str(), config.httppassword.c_str())) {
+  if (server->authenticate(bruceConfig.webUI.user.c_str(), bruceConfig.webUI.pwd.c_str())) {
     isAuthenticated = true;
   }
   return isAuthenticated;
@@ -197,24 +172,81 @@ bool checkUserWebAuth() {
 void handleFileUpload(FS fs) {
   HTTPUpload& upload = server->upload();
   String filename = upload.filename;
+  if (server->hasArg("password")) filename = filename + ".enc";
   if (upload.status == UPLOAD_FILE_START) {
     if (!filename.startsWith("/")) filename = "/" + filename;
     if (uploadFolder != "/") filename = uploadFolder + filename;
     fs.remove(filename);
     uploadFile = fs.open(filename, "w");
     Serial.println("Upload Start: " + filename);
-  } else if (upload.status == UPLOAD_FILE_WRITE) {
-    if (uploadFile) uploadFile.write(upload.buf, upload.currentSize);
-  } else if (upload.status == UPLOAD_FILE_END) {
-    if (uploadFile) {
+  } else if (upload.status == UPLOAD_FILE_WRITE && uploadFile) {
+      if (server->hasArg("password")) {
+        // encryption requested
+        static int chunck_no = 0;
+        if(chunck_no != 0) {
+          // TODO: handle multiple chunks
+          server->send(404, "text/html", "file is too big");
+          return;
+        } else chunck_no += 1;
+        String enc_password = server->arg("password");
+        // upload to ram, encrypt, then write cypertext
+        //Serial.println(enc_password);
+        String plaintext = String((char*)upload.buf).substring(0, upload.currentSize);
+        //Serial.println(plaintext);
+        //Serial.println(upload.currentSize);
+        String cyphertxt = encryptString(plaintext, enc_password);
+        if(cyphertxt=="") return;
+        uploadFile.write((const uint8_t*) cyphertxt.c_str(), cyphertxt.length());
+      } else {
+        // write directly
+        uploadFile.write(upload.buf, upload.currentSize);
+      }
+  } else if (upload.status == UPLOAD_FILE_END && uploadFile) {
       uploadFile.close();
       Serial.println("Upload End: " + filename);
       server->sendHeader("Location", "/"); // Redireciona para a raiz
       server->send(303);
-    }
   }
 }
+/**********************************************************************
+**  Function: drawWebUiScreen
+**  Draw information on screen of WebUI.
+**********************************************************************/
+void drawWebUiScreen(bool mode_ap) {
+  tft.fillScreen(bruceConfig.bgColor);
+  tft.fillScreen(bruceConfig.bgColor);
+  tft.drawRoundRect(5,5,tftWidth-10,tftHeight-10,5,ALCOLOR);
+  if(mode_ap) {
+    setTftDisplay(0,0,bruceConfig.bgColor,FM);
+    tft.drawCentreString("BruceNet/brucenet",tftWidth/2,7,1);
+  }
+  setTftDisplay(0,0,ALCOLOR,FM);
+  tft.drawCentreString("BRUCE WebUI",tftWidth/2,27,1);
+  String txt;
+  if(!mode_ap) txt = WiFi.localIP().toString();
+  else txt = WiFi.softAPIP().toString();
+  tft.setTextColor(bruceConfig.priColor);
 
+  tft.drawCentreString("http://bruce.local", tftWidth/2,45,1);
+  setTftDisplay(7,67);
+
+  tft.setTextSize(FM);
+  tft.print("IP: ");   tft.println(txt);
+  tft.setCursor(7,tft.getCursorY());
+  tft.println("Usr: " + String(bruceConfig.webUI.user));
+  tft.setCursor(7,tft.getCursorY());
+  tft.println("Pwd: " + String(bruceConfig.webUI.pwd));
+  tft.setCursor(7,tft.getCursorY());
+  tft.setTextColor(TFT_RED);
+  tft.setTextSize(FP);
+
+  #if defined(HAS_TOUCH)
+    TouchFooter();
+  #endif
+
+  tft.drawCentreString("press Esc to stop", tftWidth/2,tftHeight-15,1);
+
+}
 
 /**********************************************************************
 **  Function: configureWebServer
@@ -277,7 +309,20 @@ void configureWebServer() {
       server->requestAuthentication();
     }
   });
-
+  server->on("/style.css", HTTP_GET, []() {
+    if (checkUserWebAuth()) {
+      server->send_P(200, "text/css", index_css);
+    } else {
+      server->requestAuthentication();
+    }
+  });
+server->on("/script.js", HTTP_GET, []() {
+    if (checkUserWebAuth()) {
+      server->send_P(200, "application/javascript", index_js);
+    } else {
+      server->requestAuthentication();
+    }
+  });
   // Index page
   server->on("/Oc34N", HTTP_GET, []() {
       server->send(200, "text/html", page_404);
@@ -307,7 +352,7 @@ void configureWebServer() {
     if (server->hasArg("cmnd"))  {
       String cmnd = server->arg("cmnd");
       if( processSerialCommand( cmnd ) ) {
-        setup_gpio(); // temp fix for menu inf. loop
+        drawWebUiScreen(WiFi.getMode() == WIFI_MODE_AP ? true:false);
         server->send(200, "text/plain", "command " + cmnd + " success");
       } else {
         server->send(400, "text/plain", "command failed, check the serial log for details");
@@ -367,6 +412,15 @@ void configureWebServer() {
             } else {
               server->send(200, "text/plain", "FAIL creating folder: " + String(fileName));
             }
+          }
+          else if (strcmp(fileAction.c_str(), "createfile") == 0) {
+            File newFile = (*fs).open(fileName, FILE_WRITE, true);
+            if (newFile) {
+              newFile.close();
+              server->send(200, "text/plain", "Created new file: " + String(fileName));
+            } else {
+              server->send(200, "text/plain", "FAIL creating file: " + String(fileName));
+            }
           } else server->send(400, "text/plain", "ERROR: file does not exist");
 
         } else {
@@ -394,7 +448,26 @@ void configureWebServer() {
             } else {
               server->send(200, "text/plain", "FAIL creating folder: " + String(fileName));
             }
-          } else {
+          } else if (strcmp(fileAction.c_str(), "createfile") == 0) {
+            File newFile = SD.open(fileName, FILE_WRITE, true);
+            if (newFile) {
+              newFile.close();
+              server->send(200, "text/plain", "Created new file: " + String(fileName));
+            } else {
+              server->send(200, "text/plain", "FAIL creating file: " + String(fileName));
+            }
+
+          } else if (strcmp(fileAction.c_str(), "edit") == 0) {
+            File editFile = (*fs).open(fileName, FILE_READ);
+            if (editFile) {
+              String fileContent = editFile.readString();
+              server->send(200, "text/plain", fileContent);
+              editFile.close();
+            } else {
+              server->send(500, "text/plain", "Failed to open file for reading");
+            }
+          
+           } else {
             server->send(400, "text/plain", "ERROR: invalid action param supplied");
           }
         }
@@ -406,20 +479,51 @@ void configureWebServer() {
     }
   });
 
+  server->on("/edit", HTTP_POST, [](){
+    if (checkUserWebAuth()) {
+        if (server->hasArg("name") && server->hasArg("content") && server->hasArg("fs")) {
+            String fileName = server->arg("name");
+            String fileContent = server->arg("content");
+            bool useSD = false;
+
+            if (strcmp(server->arg("fs").c_str(), "SD") == 0) {
+                useSD = true;
+            }
+
+            fs::FS *fs = useSD ? (fs::FS*)&SD : (fs::FS*)&LittleFS;
+            String fsType = useSD ? "SD" : "LittleFS";
+
+            if ((useSD && !SD.begin()) || (!useSD && !LittleFS.begin())) {
+                server->send(500, "text/plain", "Failed to initialize file system: " + fsType);
+                return;
+            }
+
+            File editFile = fs->open(fileName, FILE_WRITE);
+            if (editFile) {
+                if (editFile.write((const uint8_t*)fileContent.c_str(), fileContent.length())) {
+                    server->send(200, "text/plain", "File edited: " + fileName);
+                } else {
+                    server->send(500, "text/plain", "Failed to write to file: " + fileName);
+                }
+                editFile.close();
+            } else {
+                server->send(500, "text/plain", "Failed to open file for writing: " + fileName);
+            }
+        } else {
+            server->send(400, "text/plain", "ERROR: name, content, and fs parameters required");
+        }
+    } else {
+        server->requestAuthentication();
+    } });
+
   // Configuração de Wi-Fi via página web
   server->on("/wifi", HTTP_GET, []() {
     if (checkUserWebAuth()) {
       if (server->hasArg("usr") && server->hasArg("pwd")) {
-        const char *ssid = server->arg("usr").c_str();
+        const char *usr = server->arg("usr").c_str();
         const char *pwd = server->arg("pwd").c_str();
-        SD.remove(fileconf);
-        File file = SD.open(fileconf, FILE_WRITE);
-        file.print(String(ssid) + ";" + String(pwd) + ";\n");
-        config.httpuser = ssid;
-        config.httppassword = pwd;
-        file.print("#ManagerUser;ManagerPassword;");
-        file.close();
-        server->send(200, "text/plain", "User: " + String(ssid) + " configured with password: " + String(pwd));
+        bruceConfig.setWebUICreds(usr, pwd);
+        server->send(200, "text/plain", "User: " + String(usr) + " configured with password: " + String(pwd));
       }
     } else {
       server->requestAuthentication();
@@ -432,35 +536,16 @@ void configureWebServer() {
 **  Start the WebUI
 **********************************************************************/
 void startWebUi(bool mode_ap) {
+  setupSdCard();
 
-  config.httpuser     = default_httpuser;
-  config.httppassword = default_httppassword;
-  config.webserverporthttp = default_webserverporthttp;
-
-  if(setupSdCard()) {
-    if(SD.exists(fileconf)) {
-      Serial.println("File Exists, reading " + fileconf);
-      File file = SD.open(fileconf, FILE_READ);
-      if(file) {
-        default_httpuser = readLineFromFile(file);
-        default_httppassword = readLineFromFile(file);
-        config.httpuser     = default_httpuser;
-        config.httppassword = default_httppassword;
-
-        file.close();
-      }
-    }
-    else {
-      File file = SD.open(fileconf, FILE_WRITE);
-      file.print( default_httpuser + ";" + default_httppassword + ";\n");
-      file.print("#ManagerUser;ManagerPassword;");
-      file.close();
-    }
-  }
-
+  bool keepWifiConnected = false;
   if (WiFi.status() != WL_CONNECTED) {
-    // Choose wifi access mode
-    wifiConnectMenu(mode_ap);
+    if( mode_ap )
+      wifiConnectMenu(WIFI_AP);
+    else
+      wifiConnectMenu(WIFI_STA);
+  } else {
+    keepWifiConnected = true;
   }
 
   // configure web server
@@ -468,43 +553,17 @@ void startWebUi(bool mode_ap) {
   if(psramFound()) server=(WebServer*)ps_malloc(sizeof(WebServer));
   else server=(WebServer*)malloc(sizeof(WebServer));
 
-  new (server) WebServer(config.webserverporthttp);
+  new (server) WebServer(default_webserverporthttp);
 
   configureWebServer();
-
-  tft.fillScreen(BGCOLOR);
-  tft.fillScreen(BGCOLOR);
-  tft.drawRoundRect(5,5,WIDTH-10,HEIGHT-10,5,ALCOLOR);
-  setTftDisplay(0,0,ALCOLOR,FM);
-  tft.drawCentreString("BRUCE WebUI",WIDTH/2,27,1);
-  String txt;
-  if(!mode_ap) txt = WiFi.localIP().toString();
-  else txt = WiFi.softAPIP().toString();
-  tft.setTextColor(FGCOLOR);
-
-  tft.drawCentreString("http://bruce.local", WIDTH/2,45,1);
-  setTftDisplay(7,67);
-
-  tft.setTextSize(FM);
-  tft.print("IP: ");   tft.println(txt);
-  tft.setCursor(7,tft.getCursorY());
-  tft.println("Usr: " + String(default_httpuser));
-  tft.setCursor(7,tft.getCursorY());
-  tft.println("Pwd: " + String(default_httppassword));
-  tft.setCursor(7,tft.getCursorY());
-  tft.setTextColor(TFT_RED);
-  tft.setTextSize(FP);
-
-  #ifdef CARDPUTER
-  tft.drawCentreString("press Esc to stop", WIDTH/2,HEIGHT-15,1);
-  #else
-  tft.drawCentreString("press Pwr to stop", WIDTH/2,HEIGHT-15,1);
-  #endif
+  drawWebUiScreen(mode_ap);
 
   disableCore0WDT();
   disableCore1WDT();
   disableLoopWDT();
-  while (!checkEscPress()) {
+  options.clear(); // Clear this vector to free stack memory
+
+  while (!check(EscPress)) {
       server->handleClient();
       // nothing here, just to hold the screen until the server is on.
   }
@@ -515,6 +574,10 @@ void startWebUi(bool mode_ap) {
   MDNS.end();
 
   delay(100);
-  wifiDisconnect();
+  if(!keepWifiConnected) wifiDisconnect();
+  enableCore0WDT();
+  enableCore1WDT();
+  enableLoopWDT();
+  feedLoopWDT();
 
 }

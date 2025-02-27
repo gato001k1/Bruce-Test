@@ -1,28 +1,67 @@
-#include <WiFi.h>
+#ifndef __EVIL_PORTAL_H__
+#define __EVIL_PORTAL_H__
+
 #include <DNSServer.h>
 #include <WebServer.h>
-#include <SD.h>
-#include <SPI.h>
+#include <globals.h>
 
-// function defaults
 
-void startEvilPortal(String tssid = "", uint8_t channel = 6, bool deauth = false);
+class EvilPortal {
+public:
+    /////////////////////////////////////////////////////////////////////////////////////
+    // Constructor
+    /////////////////////////////////////////////////////////////////////////////////////
+    EvilPortal(String tssid = "", uint8_t channel = 6, bool deauth = false);
+    ~EvilPortal();
 
-void chooseHtml(bool def = true);
+    /////////////////////////////////////////////////////////////////////////////////////
+    // Operations
+    /////////////////////////////////////////////////////////////////////////////////////
+    bool setup(void);
+    void beginAP(void);
+    void setupRoutes(void);
+    void loop(void);
 
-String getDefaultHtml();
+private:
+    String apName = "Free Wifi";
+    uint8_t _channel;
+    bool _deauth;
+    WebServer webServer;
 
-String getHtmlContents(String body);
+    DNSServer dnsServer;
+    IPAddress apGateway;
 
-String creds_GET();
+    String outputFile = "default_creds.csv";
+    String htmlPage;
+    String htmlFileName;
+    bool isDefaultHtml = true;
+    FS *fsHtmlFile;
 
-String index_GET();
+    String lastCred;
+    int totalCapturedCredentials = 0;
+    int previousTotalCapturedCredentials = -1;
+    String capturedCredentialsHtml = "";
 
-String clear_GET();
+    void portalController(void);
+    void credsController(void);
 
-String ssid_GET();
+    void restartWiFi(void);
+    void resetCapturedCredentials(void);
+    void printDeauthStatus(bool);
+    void printLastCapturedCredential(void);
+    void debounceButtonPress(void);
 
-String ssid_POST();
+    void loadCustomHtml(void);
+    void loadDefaultHtml(void);
+    String wifiLoadPage(void);
+    void saveToCSV(const String &csvLine);
 
-void saveToCSV(const String &filename, const String &csvLine);
+    void drawScreen(bool holdDeauth);
 
+    String getHtmlTemplate(String body);
+    String creds_GET(void);
+    String ssid_GET(void);
+    String ssid_POST(void);
+};
+
+#endif 

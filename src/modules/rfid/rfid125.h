@@ -6,16 +6,18 @@
  * @date 2024-08-13
  */
 
-#ifndef _RFID125_h_
-#define _RFID125_h_
+#ifndef __RFID125_H__
+#define __RFID125_H__
 
-#include "core/globals.h"
+#include <globals.h>
 
 #define RFID125_PACKET_SIZE	14
 #define RFID125_START_MARK	0x02
 #define RFID125_END_MARK	0x03
-#define RFID125_RX_PIN	    GROVE_SCL
-#define RFID125_TX_PIN  	GROVE_SDA
+#if !defined(RFID125_RX_PIN) || !defined(RFID125_TX_PIN)
+    #define RFID125_RX_PIN	    GROVE_SCL
+    #define RFID125_TX_PIN  	GROVE_SDA
+#endif
 
 
 class RFID125

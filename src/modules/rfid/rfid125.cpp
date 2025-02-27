@@ -7,7 +7,7 @@
  */
 
 #include "rfid125.h"
-#include "core/globals.h"
+#include <globals.h>
 #include "core/mykeyboard.h"
 #include "core/display.h"
 #include "core/sd_functions.h"
@@ -36,13 +36,13 @@ void RFID125::setup() {
 
 void RFID125::loop() {
     while(1) {
-        if (checkEscPress()) {
+        if (check(EscPress)) {
             _stream->end();
             returnToMenu=true;
             break;
         }
 
-        if (checkSelPress()) {
+        if (check(SelPress)) {
             select_state();
         }
 
@@ -83,7 +83,6 @@ void RFID125::select_state() {
     // options.push_back({"Load file",  [=]() { set_state(LOAD_MODE); }});
     // options.push_back({"Write NDEF", [=]() { set_state(WRITE_NDEF_MODE); }});
     // options.push_back({"Erase tag",  [=]() { set_state(ERASE_MODE); }});
-    delay(200);
     loopOptions(options);
 }
 
@@ -118,7 +117,7 @@ void RFID125::set_state(RFID125_State state) {
 void RFID125::cls() {
     drawMainBorder();
     tft.setCursor(10, 28);
-    tft.setTextColor(FGCOLOR, BGCOLOR);
+    tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
 }
 
 void RFID125::display_banner() {
@@ -186,23 +185,18 @@ bool RFID125::read_card_data() {
 	uint8_t checksum;
 	uint32_t tag_id;
 
-    if (!_stream)
-        return false;
+    if (!_stream) return false;
 
-	if (!_stream->available())
-        return false;
+	if (!_stream->available()) return false;
 
     /* if a packet doesn't begin with the right byte, remove that byte */
-    if (_stream->peek() != RFID125_START_MARK && _stream->read())
-        return false;
+    if (_stream->peek() != RFID125_START_MARK && _stream->read()) return false;
 
     /* if read a packet with the wrong size, drop it */
-	if (RFID125_PACKET_SIZE != _stream->readBytes(buff, RFID125_PACKET_SIZE))
-        return false;
+	if (RFID125_PACKET_SIZE != _stream->readBytes(buff, RFID125_PACKET_SIZE)) return false;
 
     /* if a packet doesn't end with the right byte, drop it */
-    if (buff[13] != RFID125_END_MARK)
-        return false;
+    if (buff[13] != RFID125_END_MARK) return false;
 
     for (int i=0; i<RFID125_PACKET_SIZE; i++) _tag_data[i] = buff[i];
 
@@ -247,18 +241,16 @@ void RFID125::save_file() {
 
 bool RFID125::write_file(String filename) {
     FS *fs;
-    if(setupSdCard()) fs=&SD;
-    else if(!checkLittleFsSize()) fs=&LittleFS;
-    else return false;
+    if(!getFsStorage(fs)) return false;
 
     if (!(*fs).exists("/BruceRFID")) (*fs).mkdir("/BruceRFID");
-    if ((*fs).exists("/BruceRFID/" + filename + ".lfrfid")) {
+    if ((*fs).exists("/BruceRFID/" + filename + ".rfidlf")) {
         int i = 1;
         filename += "_";
-        while((*fs).exists("/BruceRFID/" + filename + String(i) + ".lfrfid")) i++;
+        while((*fs).exists("/BruceRFID/" + filename + String(i) + ".rfidlf")) i++;
         filename += String(i);
     }
-    File file = (*fs).open("/BruceRFID/"+ filename + ".lfrfid", FILE_WRITE);
+    File file = (*fs).open("/BruceRFID/"+ filename + ".rfidlf", FILE_WRITE);
 
     if(!file) {
         return false;

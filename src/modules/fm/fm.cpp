@@ -1,11 +1,10 @@
 #include "fm.h"
-
-#define RESETPIN 0
+#include "core/utils.h"
 
 bool auto_scan = false;
 bool is_running = false;
 uint16_t fm_station = 10230; // Default set to 102.30 MHz
-Adafruit_Si4713 radio = Adafruit_Si4713(RESETPIN);
+Adafruit_Si4713 radio = Adafruit_Si4713();
 
 void set_auto_scan(bool new_value) {
   auto_scan = new_value;
@@ -16,9 +15,9 @@ void set_frq(uint16_t frq) {
 }
 
 void fm_banner() {
-  tft.fillScreen(BGCOLOR);
+  tft.fillScreen(bruceConfig.bgColor);
   tft.setCursor(10, 10);
-  tft.drawCentreString("~== Bruce Radio ==~", WIDTH/2, 10, SMOOTH_FONT);
+  tft.drawCentreString("~== Bruce Radio ==~", tftWidth/2, 10, SMOOTH_FONT);
   delay(500);
 }
 
@@ -36,8 +35,8 @@ uint16_t fm_scan() {
   radio.readTuneStatus();
   min_noise = radio.currNoiseLevel;
 
-  tft.fillScreen(BGCOLOR);
-  displayRedStripe("Scanning...", TFT_WHITE, FGCOLOR);
+  tft.fillScreen(bruceConfig.bgColor);
+  displayTextLine("Scanning...");
   for (f=8750; f<10800; f+=10) {
     Serial.print("Measuring "); Serial.print(f); Serial.print("...");
     radio.readTuneMeasure(f);
@@ -52,9 +51,9 @@ uint16_t fm_scan() {
   }
 
   sprintf(display_freq, "Found %d MHz", freq_candidate);
-  tft.fillScreen(BGCOLOR);
-  displayRedStripe(display_freq, TFT_WHITE, FGCOLOR);
-  while(!checkEscPress() && !checkSelPress()) {
+  tft.fillScreen(bruceConfig.bgColor);
+  displayTextLine(display_freq);
+  while(!check(EscPress) && !check(SelPress)) {
     delay(100);
   }
 
@@ -66,7 +65,7 @@ void fm_options_frq(uint16_t f_min, bool reserved) {
   char f_str[5];
   uint16_t f_max;
   // Choose between scan for best freq or select freq
-  displayRedStripe("Choose frequency", TFT_WHITE, FGCOLOR);
+  displayTextLine("Choose frequency");
   delay(1000);
 
   // Handle min / max frequency
@@ -89,7 +88,7 @@ void fm_options_frq(uint16_t f_min, bool reserved) {
     options.push_back({f_str,      [=]() { set_frq(f); }});
   }
   options.push_back({"Main Menu",  [=]() { backToMenu(); }});
-  delay(200);
+
   loopOptions(options);
 }
 
@@ -98,7 +97,7 @@ void fm_options_digit(uint16_t f_min, bool reserved) {
   char f_str[5];
   uint16_t f_max;
   // Choose between scan for best freq or select freq
-  displayRedStripe("Choose digit", TFT_WHITE, FGCOLOR);
+  displayTextLine("Choose digit");
   delay(1000);
 
   // Handle min / max frequency
@@ -127,7 +126,7 @@ void fm_options_digit(uint16_t f_min, bool reserved) {
     options.push_back({f_str,      [=]() { fm_options_frq(f, reserved); }});
   }
   options.push_back({"Main Menu",  [=]() { backToMenu(); }});
-  delay(200);
+
   loopOptions(options);
 }
 
@@ -135,7 +134,7 @@ void fm_options_digit(uint16_t f_min, bool reserved) {
 void fm_options(uint16_t f_min, uint16_t f_max, bool reserved) {
   char f_str[5];
   // Choose between scan for best freq or select freq
-  displayRedStripe("Choose tens", TFT_WHITE, FGCOLOR);
+  displayTextLine("Choose tens");
   delay(1000);
 
   options = { };
@@ -147,7 +146,7 @@ void fm_options(uint16_t f_min, uint16_t f_max, bool reserved) {
     options.push_back({f_str,      [=]() { fm_options_digit(f, reserved); }});
   }
   options.push_back({"Main Menu",  [=]() { backToMenu(); }});
-  delay(200);
+
   loopOptions(options);
 
   if (auto_scan == true) {
@@ -171,7 +170,7 @@ void fm_live_run(bool reserved) {
   // Run radio broadcast
   if (!returnToMenu and fm_station!=0 and fm_setup()) {
     fm_setup(false, true); // Don't know why but IT WORKS ONLY when launched 2 times...
-    while(!checkEscPress() && !checkSelPress()) {
+    while(!check(EscPress) && !check(SelPress)) {
       delay(100);
     }
   }
@@ -184,7 +183,7 @@ void fm_ta_run() {
   fm_setup(true);
   delay(10);
   fm_setup(true); // Don't know why but IT WORKS ONLY when launched 2 times...
-  while(!checkEscPress() && !checkSelPress()) {
+  while(!check(EscPress) && !check(SelPress)) {
     delay(100);
   }
 }
@@ -204,20 +203,20 @@ void fm_spectrum() {
   if (!returnToMenu) {
     fm_begin();
     fm_banner();
-    while (!checkEscPress() && !checkSelPress()) {
+    while (!check(EscPress) && !check(SelPress)) {
       radio.readTuneMeasure(fm_station);
       radio.readTuneStatus();
       noise_level = radio.currNoiseLevel;
       if (noise_level != 0) {
         // Clear the display area
-        tft.fillRect(0, 40, WIDTH, HEIGHT, TFT_BLACK);
+        tft.fillRect(0, 40, tftWidth, tftHeight, TFT_BLACK);
         // Draw waveform based on signal strength
         for (size_t i = 0; i < noise_level; i++) {
-          int lineHeight = map(noise_level, 0, SIGNAL_STRENGTH_THRESHOLD, 0, HEIGHT/2);
-          int lineX = map(i, 0, noise_level - 1, 0, WIDTH - 1); // Map i to within the display width
+          int lineHeight = map(noise_level, 0, SIGNAL_STRENGTH_THRESHOLD, 0, tftHeight/2);
+          int lineX = map(i, 0, noise_level - 1, 0, tftWidth - 1); // Map i to within the display width
           // Ensure drawing coordinates stay within the box bounds
-          int startY = constrain(20 + HEIGHT / 2 - lineHeight / 2, 20, 20 + HEIGHT);
-          int endY = constrain(20 + HEIGHT / 2 + lineHeight / 2, 20, 20 + HEIGHT);
+          int startY = constrain(20 + tftHeight / 2 - lineHeight / 2, 20, 20 + tftHeight);
+          int endY = constrain(20 + tftHeight / 2 + lineHeight / 2, 20, 20 + tftHeight);
           tft.drawLine(lineX, startY, lineX, endY, TFT_PURPLE);
         }
       }
@@ -229,12 +228,9 @@ void fm_spectrum() {
 
 bool fm_begin() {
   if (!radio.begin()) { // begin with address 0x63 (CS high default)
-    tft.fillScreen(BGCOLOR);
+    tft.fillScreen(bruceConfig.bgColor);
     Serial.println("Cannot find radio");
-    displayRedStripe("Cannot find radio", TFT_WHITE, FGCOLOR);
-    while(!checkEscPress() && !checkSelPress()) {
-      delay(100);
-    }
+    displayTextLine("Cannot find radio",true);
     return false;
   }
 

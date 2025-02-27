@@ -11,12 +11,13 @@
 #if defined(HAS_NS4168_SPKR)
 
 bool playAudioFile(FS* fs, String filepath) {
-  
+  if (!bruceConfig.soundEnabled) return false;
+
   AudioFileSource* source = new AudioFileSourceFS(*fs, filepath.c_str());
   if(!source) return false;
-  
+
   AudioOutputI2S* audioout = new AudioOutputI2S();  // https://github.com/earlephilhower/ESP8266Audio/blob/master/src/AudioOutputI2S.cpp#L32
-  audioout->SetPinout(BCLK, WCLK, DOUT);
+  audioout->SetPinout(BCLK, WCLK, DOUT, MCLK);
 
   AudioGenerator* generator = NULL;
 
@@ -24,17 +25,17 @@ bool playAudioFile(FS* fs, String filepath) {
   filepath.toLowerCase(); // case-insensitive match
   if (filepath.endsWith(".txt") || filepath.endsWith(".rtttl"))
     generator = new AudioGeneratorRTTTL();
-  if (filepath.endsWith(".wav")) 
+  if (filepath.endsWith(".wav"))
     generator = new AudioGeneratorWAV();
-  if (filepath.endsWith(".mod")) 
+  if (filepath.endsWith(".mod"))
     generator = new AudioGeneratorMOD();
-  if (filepath.endsWith(".opus")) 
+  if (filepath.endsWith(".opus"))
     generator = new AudioGeneratorOpus();
   if (filepath.endsWith(".mp3")) {
     generator = new AudioGeneratorMP3();
     source = new AudioFileSourceID3(source);
   }
-  /* 2FIX: compilation issues 
+  /* 2FIX: compilation issues
   if(filepath.endsWith(".mid"))  {
     // need to load a soundfont
     AudioFileSource* sf2 = NULL;
@@ -45,12 +46,11 @@ bool playAudioFile(FS* fs, String filepath) {
     midi->SetSoundfont(sf2);
     generator = midi;
   } */
-    
   if (generator && source && audioout) {
     Serial.println("Start audio");
     generator->begin(source, audioout);
     while (generator->isRunning()) {
-      if (!generator->loop() || checkAnyKeyPress() ) generator->stop();
+      if (!generator->loop() || check(AnyKeyPress) ) generator->stop();
     }
     audioout->stop();
     source->close();
@@ -59,31 +59,33 @@ bool playAudioFile(FS* fs, String filepath) {
     delete generator;
     delete source;
     delete audioout;
-    
+
     return true;
   }
-  // else    
+  // else
   return false;  // init error
 }
 
 bool playAudioRTTTLString(String song) {
+  if (!bruceConfig.soundEnabled) return false;
+
   // derived from https://github.com/earlephilhower/ESP8266Audio/blob/master/examples/PlayRTTTLToI2SDAC/PlayRTTTLToI2SDAC.ino
-  
+
   song.trim();
   if(song=="") return false;
-  
+
   AudioOutputI2S* audioout = new AudioOutputI2S();
-  audioout->SetPinout(BCLK, WCLK, DOUT);
-  
+  audioout->SetPinout(BCLK, WCLK, DOUT, MCLK);
+
   AudioGenerator* generator = new AudioGeneratorRTTTL();
-  
+
   AudioFileSource* source = new AudioFileSourcePROGMEM( song.c_str(), song.length() );
-    
+
   if (generator && source && audioout) {
     Serial.println("Start audio");
     generator->begin(source, audioout);
     while (generator->isRunning()) {
-      if (!generator->loop() || checkAnyKeyPress() ) generator->stop();
+      if (!generator->loop() || check(AnyKeyPress) ) generator->stop();
     }
     audioout->stop();
     source->close();
@@ -92,7 +94,7 @@ bool playAudioRTTTLString(String song) {
     delete generator;
     delete source;
     delete audioout;
-    
+
     return true;
   }
   // else
@@ -100,12 +102,14 @@ bool playAudioRTTTLString(String song) {
 }
 
 bool tts(String text){
+  if (!bruceConfig.soundEnabled) return false;
+
   text.trim();
   if(text=="") return false;
-  
+
   AudioOutputI2S* audioout = new AudioOutputI2S();
-  audioout->SetPinout(BCLK, WCLK, DOUT);
-  
+  audioout->SetPinout(BCLK, WCLK, DOUT, MCLK);
+
   // https://github.com/earlephilhower/ESP8266SAM/blob/master/examples/Speak/Speak.ino
   audioout->begin();
   ESP8266SAM *sam = new ESP8266SAM;
@@ -116,25 +120,27 @@ bool tts(String text){
 
 
 bool isAudioFile(String filepath) {
-    
-    return filepath.endsWith(".opus") || filepath.endsWith(".rtttl") || 
+
+    return filepath.endsWith(".opus") || filepath.endsWith(".rtttl") ||
         filepath.endsWith(".wav") || filepath.endsWith(".mod") || filepath.endsWith(".mp3") ;
 }
 
 
 void playTone(unsigned int frequency, unsigned long duration, short waveType)
 {
+  if (!bruceConfig.soundEnabled) return;
+
   // derived from https://github.com/earlephilhower/ESP8266Audio/blob/master/examples/PlayWAVFromFunction/PlayWAVFromFunction.ino
-  
+
   if(frequency==0 || duration==0) return;
-  
+
   float hz = frequency;
 
   AudioGeneratorWAV* wav;
   AudioFileSourceFunction* file;
   AudioOutputI2S* out = new AudioOutputI2S();
-  out->SetPinout(BCLK, WCLK, DOUT);
-  
+  out->SetPinout(BCLK, WCLK, DOUT, MCLK);
+
   file = new AudioFileSourceFunction( duration/1000.0);  // , 1, 44100
   //
   // you can set (sec, channels, hz, bit/sample) but you should care about
@@ -146,14 +152,14 @@ void playTone(unsigned int frequency, unsigned long duration, short waveType)
   // bit/sample : default = 16 (8, 16, 32)
 
   // ===== set your sound function =====
-  
+
   if(waveType==0) { // square
     file->addAudioGenerators([&](const float time) {
       float v = ( sin(hz * time) >= 0 ) ? 1.0f : -1.0f;;  // generate square wave
       v *= 0.1;                           // scale
       return v;
     });
-  }  
+  }
   else if(waveType==1) { // sine
     file->addAudioGenerators([&](const float time) {
       float v = sin(TWO_PI * hz * time);  // generate sine wave
@@ -170,11 +176,11 @@ void playTone(unsigned int frequency, unsigned long duration, short waveType)
 
   wav = new AudioGeneratorWAV();
   wav->begin(file, out);
-  
+
   while (wav->isRunning()) {
-    if (!wav->loop() || checkAnyKeyPress()) wav->stop();
+    if (!wav->loop() || check(AnyKeyPress)) wav->stop();
   }
-  
+
   delete file;
   delete wav;
   delete out;
@@ -184,6 +190,8 @@ void playTone(unsigned int frequency, unsigned long duration, short waveType)
 
 
 void _tone(unsigned int frequency, unsigned long duration) {
+  if (!bruceConfig.soundEnabled) return;
+
 #if defined(BUZZ_PIN)
   tone(BUZZ_PIN, frequency, duration);
 #elif defined(HAS_NS4168_SPKR)

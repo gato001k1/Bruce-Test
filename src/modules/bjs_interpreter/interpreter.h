@@ -13,4 +13,8 @@
 
 void run_bjs_script();
 
-void interpreter();
+bool interpreter();
+
+bool run_bjs_script_headless(const char *code);
+bool run_bjs_script_headless(FS fs, String filename);
+

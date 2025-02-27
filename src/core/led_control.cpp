@@ -1,0 +1,143 @@
+#include "led_control.h"
+#ifdef HAS_RGB_LED
+#include <globals.h>
+#include "core/display.h"
+#include "core/utils.h"
+#include <FastLED.h>
+#include "driver/rmt.h"
+
+CRGB leds[LED_COUNT];
+
+CRGB hsvToRgb(uint16_t h, uint8_t s, uint8_t v) {
+    uint8_t f = (h % 60) * 255 / 60;
+    uint8_t p = (255 - s) * (uint16_t)v / 255;
+    uint8_t q = (255 - f * (uint16_t)s / 255) * (uint16_t)v / 255;
+    uint8_t t = (255 - (255 - f) * (uint16_t)s / 255) * (uint16_t)v / 255;
+    uint8_t r = 0, g = 0, b = 0;
+    switch ((h / 60) % 6) {
+        case 0: r = v; g = t; b = p; break;
+        case 1: r = q; g = v; b = p; break;
+        case 2: r = p; g = v; b = t; break;
+        case 3: r = p; g = q; b = v; break;
+        case 4: r = t; g = p; b = v; break;
+        case 5: r = v; g = p; b = q; break;
+    }
+
+    CRGB c;
+    c.red = r;
+    c.green = g;
+    c.blue = b;
+    return c;
+}
+
+
+void beginLed() {
+#ifdef RGB_LED_CLK
+    FastLED.addLeds<LED_TYPE, RGB_LED, RGB_LED_CLK, LED_ORDER>(leds, LED_COUNT);
+#else
+    FastLED.addLeds<LED_TYPE, RGB_LED, LED_ORDER>(leds, LED_COUNT); // Initialize the LED Object. Only 1 LED.
+#endif
+
+
+/* The default FastLED driver takes over control of the RMT interrupt
+ * handler, making it hard to use the RMT device for other
+ * (non-FastLED) purposes. You can change it's behavior to use the ESP
+ * core driver instead, allowing other RMT applications to
+ * co-exist. To switch to this mode, add the following directive
+ * before you include FastLED.h:
+ *
+ *      #define FASTLED_RMT_BUILTIN_DRIVER 1
+ *  RMT is also used for RF Spectrum (and for RF readings in the future),
+ *  So it is needed to restart the driver in case it had been turned off
+ *  by the RF functions, in this case, we are restarting it all the time
+ */
+// -- RMT configuration for transmission
+for (int i = 0; i < 8; i += 2)
+    {
+        rmt_config_t rmt_tx;
+        memset(&rmt_tx, 0, sizeof(rmt_config_t));
+        rmt_tx.channel = rmt_channel_t(i);
+        rmt_tx.rmt_mode = RMT_MODE_TX;
+        rmt_tx.gpio_num = (gpio_num_t)RGB_LED;
+        rmt_tx.mem_block_num = 2;
+        rmt_tx.clk_div = 2;
+        rmt_tx.tx_config.loop_en = false;
+        rmt_tx.tx_config.carrier_level = RMT_CARRIER_LEVEL_LOW;
+        rmt_tx.tx_config.carrier_en = false;
+        rmt_tx.tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
+        rmt_tx.tx_config.idle_output_en = true;
+
+        // -- Apply the configuration
+        rmt_config(&rmt_tx);
+        rmt_driver_uninstall(rmt_channel_t(i));
+        rmt_driver_install(rmt_channel_t(i), 0, 0);
+    }
+
+
+    setLedColor(bruceConfig.ledColor);
+    setLedBrightness(bruceConfig.ledBright);
+}
+
+
+void setLedColor(CRGB color) {
+    for (int i = 0; i < LED_COUNT; i++) leds[i] = color;
+    FastLED.show();
+}
+
+
+void setLedBrightness(int value) {
+    value = max(0, min(255, value));
+    int bright = 255 * value/100;
+    FastLED.setBrightness(bright);
+    FastLED.show();
+}
+
+
+void setLedColorConfig() {
+    int idx;
+    if (bruceConfig.ledColor==CRGB::Black) idx=0;
+    else if (bruceConfig.ledColor==CRGB::Purple) idx=1;
+    else if (bruceConfig.ledColor==CRGB::White) idx=2;
+    else if (bruceConfig.ledColor==CRGB::Red) idx=3;
+    else if (bruceConfig.ledColor==CRGB::Green) idx=4;
+    else if (bruceConfig.ledColor==CRGB::Blue) idx=5;
+    else idx=6;  // custom color
+
+    options = {
+        {"OFF",    [=]() { bruceConfig.setLedColor(CRGB::Black); }, bruceConfig.ledColor == CRGB::Black },
+        {"Purple", [=]() { bruceConfig.setLedColor(CRGB::Purple); }, bruceConfig.ledColor == CRGB::Purple},
+        {"White",  [=]() { bruceConfig.setLedColor(CRGB::White); }, bruceConfig.ledColor == CRGB::White},
+        {"Red",    [=]() { bruceConfig.setLedColor(CRGB::Red); }, bruceConfig.ledColor == CRGB::Red},
+        {"Green",  [=]() { bruceConfig.setLedColor(CRGB::Green); }, bruceConfig.ledColor == CRGB::Green},
+        {"Blue",   [=]() { bruceConfig.setLedColor(CRGB::Blue); }, bruceConfig.ledColor == CRGB::Blue},
+    };
+
+    if (idx == 6) options.emplace_back("Custom Color", [=]() { backToMenu(); }, true);
+    options.emplace_back("Main Menu", [=]() { backToMenu(); });
+
+    loopOptions(options, idx);
+    setLedColor(bruceConfig.ledColor);
+}
+
+
+void setLedBrightnessConfig() {
+    int idx;
+    if (bruceConfig.ledBright==10) idx=0;
+    else if (bruceConfig.ledBright==25) idx=1;
+    else if (bruceConfig.ledBright==50) idx=2;
+    else if (bruceConfig.ledBright==75) idx=3;
+    else if (bruceConfig.ledBright==100) idx=4;
+
+    options = {
+        {"10 %", [=]() { bruceConfig.setLedBright(10);  }, bruceConfig.ledBright == 10 },
+        {"25 %", [=]() { bruceConfig.setLedBright(25);  }, bruceConfig.ledBright == 25 },
+        {"50 %", [=]() { bruceConfig.setLedBright(50);  }, bruceConfig.ledBright == 50 },
+        {"75 %", [=]() { bruceConfig.setLedBright(75);  }, bruceConfig.ledBright == 75 },
+        {"100%", [=]() { bruceConfig.setLedBright(100); }, bruceConfig.ledBright == 100 },
+        {"Main Menu", [=]() { backToMenu(); }},
+    };
+
+    loopOptions(options, idx);
+    setLedBrightness(bruceConfig.ledBright);
+}
+#endif

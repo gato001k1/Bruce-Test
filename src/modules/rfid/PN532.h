@@ -7,7 +7,7 @@
  */
 
 #include "RFIDInterface.h"
-#include "lib_pn532/Adafruit_PN532.h"
+#include <Adafruit_PN532.h>
 
 
 class PN532 : public RFIDInterface {
@@ -19,7 +19,14 @@ public:
         PICC_TYPE_MIFARE_UL		= 0x00,	// MIFARE Ultralight or Ultralight C
     };
 
+    // Devices such as T-Embed CC1101 uses an embedded PN532 that needs the IRQ and RST pins to work
+    // If using other device that uses, set -DPN532_IRQ=pin_num and -DPN532_RF_REST=pin_num to platformio.ini
+    // of this particular device, should not be used in other devices on I2C mode
+    #if defined(PN532_IRQ) && defined(PN532_RF_REST)
+        Adafruit_PN532 nfc = Adafruit_PN532(PN532_IRQ,PN532_RF_REST);
+    #else
     Adafruit_PN532 nfc = Adafruit_PN532();
+    #endif
 
     /////////////////////////////////////////////////////////////////////////////////////
     // Constructor
@@ -44,8 +51,6 @@ public:
 
 private:
     bool _use_i2c;
-    byte pn532_packetbuffer[64];
-    Uid _tag_read_uid;
 
     /////////////////////////////////////////////////////////////////////////////////////
     // Converters
@@ -57,14 +62,11 @@ private:
     /////////////////////////////////////////////////////////////////////////////////////
     // PICC Helpers
     /////////////////////////////////////////////////////////////////////////////////////
-    bool PICC_IsNewCardPresent();
-    String PICC_GetTypeName(byte sak);
-    bool readDetectedPassiveTargetID();
-
     String get_tag_type();
     bool read_data_blocks();
-    bool read_mifare_classic_data_blocks(uint8_t *key);
-    bool read_mifare_classic_data_sector(uint8_t *key, byte sector);
+    bool read_mifare_classic_data_blocks();
+    bool read_mifare_classic_data_sector(byte sector);
+    bool authenticate_mifare_classic(byte block);
     bool read_mifare_ultralight_data_blocks();
 
     int write_data_blocks();

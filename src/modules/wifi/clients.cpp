@@ -15,7 +15,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <lwip/sockets.h>
-#include "core/globals.h"
+#include <globals.h>
 #include "core/display.h"
 #include "core/mykeyboard.h"
 #include "core/wifi_common.h"
@@ -28,9 +28,7 @@ String ssh_port     = "";
 String ssh_password = "";
 char* ssh_port_char;
 
-// M5Cardputer setup
-//M5Canvas canvas(&DISP);
- String commandBuffer              = "> ";
+String commandBuffer              = "> ";
 int cursorY                       = 0;
 const int lineHeight              = 32; //32
 unsigned long lastKeyPressMillis  = 0;
@@ -57,9 +55,9 @@ char* stringTochar(String s)
 bool filterAnsiSequences = true;  // Set to false to disable ANSI sequence filtering
 
 void ssh_setup(String host) {
-    if(!wifiConnected) wifiConnectMenu(false);
+    if(!wifiConnected) wifiConnectMenu();
 
-    tft.fillScreen(BGCOLOR);
+    tft.fillScreen(bruceConfig.bgColor);
     tft.setCursor(0, 0);
     if(host != "") ssh_host = host;
     else {
@@ -90,7 +88,7 @@ void ssh_setup(String host) {
 void ssh_loop(void *pvParameters) {
     String message = "";
     tft.setTextSize(FP);
-    tft.fillScreen(BGCOLOR);
+    tft.fillScreen(bruceConfig.bgColor);
     tft.setCursor(0, 0);
     cursorY = tft.getCursorY();
     log_d("BEFORE SSH");
@@ -103,7 +101,7 @@ void ssh_loop(void *pvParameters) {
 
 
     if (my_ssh_session == NULL) {
-        tft.setTextColor(TFT_RED, BGCOLOR);
+        tft.setTextColor(TFT_RED, bruceConfig.bgColor);
         displayRedStripe("SSH Shell request error.");
         log_d("SSH Session creation failed.");
         returnToMenu=true;
@@ -120,7 +118,7 @@ void ssh_loop(void *pvParameters) {
     log_d("AFTER COMPARE AND OPTION SET");
 
     if (ssh_connect(my_ssh_session) != SSH_OK) {
-        tft.setTextColor(TFT_RED, BGCOLOR);
+        tft.setTextColor(TFT_RED, bruceConfig.bgColor);
         displayRedStripe("SSH Shell request error.");
         log_d("SSH Connect error.");
         ssh_free(my_ssh_session);
@@ -132,7 +130,7 @@ void ssh_loop(void *pvParameters) {
 
     if (ssh_userauth_password(my_ssh_session, NULL, ssh_password.c_str()) !=
         SSH_AUTH_SUCCESS) {
-        tft.setTextColor(TFT_RED, BGCOLOR);
+        tft.setTextColor(TFT_RED, bruceConfig.bgColor);
         displayRedStripe("SSH Shell request error.");
         log_d("SSH Authentication error.");
         ssh_disconnect(my_ssh_session);
@@ -145,7 +143,7 @@ void ssh_loop(void *pvParameters) {
 
     channel_ssh = ssh_channel_new(my_ssh_session);
     if (channel_ssh == NULL || ssh_channel_open_session(channel_ssh) != SSH_OK) {
-        tft.setTextColor(TFT_RED, BGCOLOR);
+        tft.setTextColor(TFT_RED, bruceConfig.bgColor);
         displayRedStripe("SSH Shell request error.");
         log_d("SSH Channel open error.");
         ssh_disconnect(my_ssh_session);
@@ -157,7 +155,7 @@ void ssh_loop(void *pvParameters) {
     }
 
     if (ssh_channel_request_pty(channel_ssh) != SSH_OK) {
-        tft.setTextColor(TFT_RED, BGCOLOR);
+        tft.setTextColor(TFT_RED, bruceConfig.bgColor);
         displayRedStripe("SSH Shell request error.");
         log_d("SSH PTY request error.");
         ssh_channel_close(channel_ssh);
@@ -171,7 +169,7 @@ void ssh_loop(void *pvParameters) {
     }
 
     if (ssh_channel_request_shell(channel_ssh) != SSH_OK) {
-        tft.setTextColor(TFT_RED, BGCOLOR);
+        tft.setTextColor(TFT_RED, bruceConfig.bgColor);
         displayRedStripe("SSH Shell request error.");
         log_d("SSH Shell request error.");
         ssh_channel_close(channel_ssh);
@@ -186,44 +184,41 @@ void ssh_loop(void *pvParameters) {
 
 
     log_d("SSH setup completed.");
-    tft.fillScreen(BGCOLOR);
-    tft.setTextColor(TFT_WHITE, BGCOLOR);
+    tft.fillScreen(bruceConfig.bgColor);
+    tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
     tft.setTextSize(FP);
     char buffer[1024];
     int nbytes;
+    keyStroke key;
     while(1) {
-    #ifdef CARDPUTER
-        Keyboard.update();
-        if (Keyboard.isChange() && Keyboard.isPressed()) {
+    #ifdef HAS_KEYBOARD
+        key=_getKeyPress();
+        if (key.pressed) {
             unsigned long currentMillis = millis();
             if (currentMillis - lastKeyPressMillis >= debounceDelay) {
                 lastKeyPressMillis               = currentMillis;
-                Keyboard_Class::KeysState status = Keyboard.keysState();
-
-                for (auto i : status.word) {
+                for(auto i : key.word){
                     commandBuffer += i;
                     tft.print(i);
                     cursorY = tft.getCursorY();
                 }
-
-                if (status.del && commandBuffer.length() > 2) {
+                if (key.del && commandBuffer.length() > 2) {
                     commandBuffer.remove(commandBuffer.length() - 1);
                     tft.setCursor(
                         tft.getCursorX() - 6,
                         tft.getCursorY());
-                    tft.setTextColor(TFT_GREEN, BGCOLOR);
+                    tft.setTextColor(TFT_GREEN, bruceConfig.bgColor);
                     tft.print(" ");
                     tft.setCursor(
                         tft.getCursorX() - 6,
                         tft.getCursorY());
                     cursorY = tft.getCursorY();
                 }
-
-                if (status.enter) {
+                else if (key.enter) {
                     tft.setTextColor(TFT_GREEN);
                     commandBuffer.trim();
                     if(commandBuffer.substring(2) == "cls") {
-                        tft.fillScreen(BGCOLOR);
+                        tft.fillScreen(bruceConfig.bgColor);
                         tft.setCursor(0,0);
                         tft.print("> ");
                         commandBuffer = "> ";
@@ -232,22 +227,23 @@ void ssh_loop(void *pvParameters) {
                         ssh_channel_write(channel_ssh, message.c_str(), message.length());  // Send the command
                     }
                     cursorY = tft.getCursorY();  // Update cursor position
-                    if(cursorY > HEIGHT) {
-                        tft.setCursor(0,HEIGHT-10);
-                        tft.fillRect(0,HEIGHT-11,WIDTH,11, BGCOLOR);
+                    if(cursorY > tftHeight) {
+                        tft.setCursor(0,tftHeight-10);
+                        tft.fillRect(0,tftHeight-11,tftWidth,11, bruceConfig.bgColor);
                     }
                 }
+
             }
         }
 
     #else
-        if(checkSelPress()) {
+        if(check(SelPress)) {
 
-            while(checkSelPress()) { yield(); } // timerless debounce
+            while(check(SelPress)) { yield(); } // timerless debounce
             message = keyboard("cls",76,"SSH Command: ");
-            while(checkSelPress()) { yield(); } // timerless debounce
+            while(check(SelPress)) { yield(); } // timerless debounce
             if(message=="cls") {
-                tft.fillScreen(BGCOLOR);
+                tft.fillScreen(bruceConfig.bgColor);
                 tft.setCursor(0,0);
                 tft.print("> ");
             } else {
@@ -274,8 +270,8 @@ void ssh_loop(void *pvParameters) {
                 msg += char(buffer[i]);
                 if (buffer[i] == '\r') continue;  // Ignore carriage return
                 tft.write(buffer[i]);
-                if(tft.getCursorY()>HEIGHT) {
-                    tft.fillScreen(BGCOLOR);
+                if(tft.getCursorY()>tftHeight) {
+                    tft.fillScreen(bruceConfig.bgColor);
                     tft.setCursor(0,0);
                     tft.setTextColor(TFT_GREEN);
                     tft.print(commandBuffer);  // Move to the next line on display
@@ -286,9 +282,9 @@ void ssh_loop(void *pvParameters) {
             log_d("%s", msg);
 
             cursorY = tft.getCursorY();  // Update cursor position
-            if(cursorY > HEIGHT) {
-                tft.setCursor(0,HEIGHT-10);
-                tft.fillRect(0,HEIGHT-11,WIDTH,11, BGCOLOR);
+            if(cursorY > tftHeight) {
+                tft.setCursor(0,tftHeight-10);
+                tft.fillRect(0,tftHeight-11,tftWidth,11, bruceConfig.bgColor);
             }
             commandBuffer = "> ";  // Reset command buffer
             tft.setTextColor(TFT_GREEN);
@@ -306,10 +302,13 @@ void ssh_loop(void *pvParameters) {
     ssh_disconnect(my_ssh_session);
     ssh_free(my_ssh_session);
     displayRedStripe("SSH session closed.");
-    tft.setTextColor(FGCOLOR, BGCOLOR);
+    tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
     returnToMenu=true;
     vTaskDelete(NULL);
-
+    enableCore0WDT();
+    enableCore1WDT();
+    enableLoopWDT();
+    feedLoopWDT();
 
 }
 
@@ -333,29 +332,29 @@ void telnet_loop() {
     sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
     if (sock < 0) {
         Serial.println("Unable to create socket");
-        tft.setTextColor(TFT_RED, BGCOLOR);
+        tft.setTextColor(TFT_RED, bruceConfig.bgColor);
         displayRedStripe("Unable to create socket");
-        tft.setTextColor(FGCOLOR, BGCOLOR);
+        tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
         delay(5000);
         return;
     }
 
     if (connect(sock, (struct sockaddr*)&dest_addr, sizeof(dest_addr)) != 0) {
         Serial.println("Socket connection failed");
-        tft.setTextColor(TFT_RED, BGCOLOR);
+        tft.setTextColor(TFT_RED, bruceConfig.bgColor);
         displayRedStripe("Socket connection failed");
-        tft.setTextColor(FGCOLOR, BGCOLOR);
+        tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
         close(sock);
         delay(5000);
         return;
     }
 
     Serial.println("Connected to TELNET server");
-    tft.setTextColor(TFT_GREEN, BGCOLOR);
-    displayRedStripe("Connected to TELNET server", TFT_WHITE, TFT_DARKGREEN );
-    tft.setTextColor(FGCOLOR, BGCOLOR);
+    tft.setTextColor(TFT_GREEN, bruceConfig.bgColor);
+    displayTextLine("Connected to TELNET server");
+    tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
     delay(2000);
-    tft.fillScreen(BGCOLOR);
+    tft.fillScreen(bruceConfig.bgColor);
     tft.setCursor(0, 0);
 
     String commandInput;
@@ -379,7 +378,7 @@ void telnet_loop() {
                 continue;
             }
             */
-            tft.setTextColor(TFT_WHITE, BGCOLOR);
+            tft.setTextColor(TFT_WHITE, bruceConfig.bgColor);
             Serial.printf("Received from server %s\n", buffer);
             //tft.printf("Received from server %s\n", buffer);
             for (int i = 0; i < len; i++) {
@@ -387,7 +386,7 @@ void telnet_loop() {
             }
             tft.printf("%s\n", buffer);
 
-            tft.setTextColor(FGCOLOR, BGCOLOR);
+            tft.setTextColor(bruceConfig.priColor, bruceConfig.bgColor);
 
         }
 
@@ -396,9 +395,9 @@ void telnet_loop() {
 }
 
 void telnet_setup() {
-    if(!wifiConnected) wifiConnectMenu(false);
+    if(!wifiConnected) wifiConnectMenu();
 
-    tft.fillScreen(BGCOLOR);
+    tft.fillScreen(bruceConfig.bgColor);
     tft.setCursor(0, 0);
     Serial.begin(115200);  // Initialize serial communication for debugging
     Serial.println("Starting Setup");

@@ -54,9 +54,13 @@
         "regex": "cpp",
         "list": "cpp",
         "unordered_set": "cpp",
-        "iomanip": "cpp"
+        "iomanip": "cpp",
+        "chrono": "cpp",
+        "ratio": "cpp",
+        "*.tpp": "cpp"
     },
     "githubPullRequests.ignoredPullRequestBranches": [
         "main"
-    ]
+    ],
+    "cmake.sourceDirectory": "C:/Projetos/Bruce/lib/M5GFX"
 }
