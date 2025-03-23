@@ -53,14 +53,12 @@ void key_input(FS fs, String bad_script) {
       char ArgChar;
       bool ArgIsCmd;  // Verifies if the Argument is DELETE, TAB or F1-F12
       int cmdFail;    // Verifies if the command is supported, mus pass through 2 if else statemens and summ 2 to not be supported
-      int line;       // Shows 3 commands of the payload on screen to follow the execution
 
 
       Kb.releaseAll();
       tft.setTextSize(1);
       tft.setCursor(0, 0);
       tft.fillScreen(bruceConfig.bgColor);
-      line = 0;
 
       while (payloadFile.available()) {
         previousMillis = millis(); // resets DimScreen
@@ -245,7 +243,7 @@ void usb_setup() {
   Serial.println("BadUSB begin");
   tft.fillScreen(bruceConfig.bgColor);
 
-  FS *fs;
+  FS *fs=nullptr;
   bool first_time=true;
 NewScript:
   tft.fillScreen(bruceConfig.bgColor);
@@ -399,9 +397,13 @@ void usb_keyboard() {
   tft.setTextSize(FM);
   String _mymsg="";
   keyStroke key;
+  long debounce=millis();
   while(1) {
     key=_getKeyPress();
-    if (key.pressed) {
+    if (key.pressed && (millis()-debounce>200)) {
+      if(key.alt) Kb.press(KEY_LEFT_ALT);
+      if(key.ctrl) Kb.press(KEY_LEFT_CTRL);
+      if(key.gui) Kb.press(KEY_LEFT_GUI);
       if(key.enter) Kb.println();
       else if(key.del) Kb.press(KEYBACKSPACE);
       else {
@@ -412,8 +414,8 @@ void usb_keyboard() {
             Kb.press(k);
         }
       }
-      if(key.fn && key.exit_key) break; 
-      
+      if(key.fn && key.exit_key) break;
+
       Kb.releaseAll();
 
       // only text for tft
@@ -432,7 +434,7 @@ void usb_keyboard() {
         tft.drawCentreString("Pressed: " + keyStr, tftWidth / 2, tftHeight / 2,1);
         _mymsg=keyStr;
       }
-      delay(200);
+      debounce=millis();
     }
   }
 }

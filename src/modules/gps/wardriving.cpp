@@ -181,12 +181,12 @@ void Wardriving::create_filename() {
     sprintf(
         timestamp,
         "%02d%02d%02d_%02d%02d%02d",
-        gps.date.year(),
-        gps.date.month(),
-        gps.date.day(),
-        gps.time.hour(),
-        gps.time.minute(),
-        gps.time.second()
+        gps.date.year() % 100,
+        gps.date.month() % 100,
+        gps.date.day() % 100,
+        gps.time.hour() % 100,
+        gps.time.minute() % 100,
+        gps.time.second() % 100
     );
     filename = String(timestamp) + "_wardriving.csv";
 }
@@ -227,7 +227,7 @@ void Wardriving::append_to_file(int network_amount) {
             int32_t channel = WiFi.channel(i);
 
             char buffer[512];
-            snprintf(buffer, sizeof(buffer), "%s,%s,[%s],%04d-%02d-%02d %02d:%02d:%02d,%d,%d,%d,%f,%f,%f,%f,,,WIFI\n",
+            snprintf(buffer, sizeof(buffer), "%s,\"%s\",[%s],%04d-%02d-%02d %02d:%02d:%02d,%d,%d,%d,%f,%f,%f,%f,,,WIFI\n",
                 macAddress.c_str(),
                 WiFi.SSID(i).c_str(),
                 auth_mode_to_string(WiFi.encryptionType(i)).c_str(),

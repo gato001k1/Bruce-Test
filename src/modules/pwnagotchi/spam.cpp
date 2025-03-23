@@ -149,7 +149,7 @@ void beacon_task(void* pvParameters) {
 }
 
 void displaySpamStatus() {
-  tft.fillScreen(TFT_BLACK);
+  tft.fillScreen(bruceConfig.bgColor);
   drawTopCanvas();
   drawBottomCanvas();
   tft.fillRect(0, 20, tftWidth, tftHeight - 40, bruceConfig.bgColor);
@@ -257,7 +257,8 @@ Default: // This is default pwngrid faces to spam, removing the necessity to hav
     i=0;
     names[i++]="my name is... BRUCE!";
     names[i++]="Check M5 Bruce Project";
-    names[i++]="┌∩┐(◣_◢)┌∩┐","(╯°□°)╯╭╮(XoX)";
+    names[i++]="┌∩┐(◣_◢)┌∩┐";
+    names[i++]="(╯°□°)╯╭╮(XoX)";
     names[i++]="STOP DEAUTH SKIDZ!";
     names[i++]="System Breached oups";
     names[i++]="Unauthorized  Access";

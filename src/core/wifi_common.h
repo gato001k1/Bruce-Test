@@ -23,16 +23,16 @@ bool wifiConnectMenu(wifi_mode_t = WIFI_MODE_STA);
 
 
 /**
- * @brief displays MAC adress
+ * @brief returns MAC adress
  */
-void checkMAC();
+String checkMAC();
 
 /**
  * @brief tries to connect to min(found_networks, maxSearch) networks
  * using stored passwords
  * @TODO fix: rn it skips open networks due to password == "" check
  */
-void wifiConnectTask(int maxSearch = 5);
+void wifiConnectTask(void * pvParameters);
 
 
 // private

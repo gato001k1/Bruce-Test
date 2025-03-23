@@ -5,11 +5,14 @@
 
 
 class NRF24Menu : public MenuItemInterface {
-public:
+  public:
     NRF24Menu() : MenuItemInterface("NRF24") {}
 
     void optionsMenu(void);
+    void configMenu(void);
     void drawIcon(float scale);
+    void drawIconImg();
+    bool getTheme() { return bruceConfig.theme.nrf; }
 };
 
 #endif

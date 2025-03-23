@@ -25,7 +25,7 @@ uint16_t fm_scan() {
   if (!fm_begin()) {
     return 0;
   }
-  char display_freq[10];
+  char display_freq[16];
   uint16_t f = 8750;
   uint16_t min_noise;
   uint16_t freq_candidate = f;
@@ -62,7 +62,7 @@ uint16_t fm_scan() {
 
 // Choose between 92.0 - 92.1 - 92.2 - 92.3 etc.
 void fm_options_frq(uint16_t f_min, bool reserved) {
-  char f_str[5];
+  char f_str[9];
   uint16_t f_max;
   // Choose between scan for best freq or select freq
   displayTextLine("Choose frequency");
@@ -94,7 +94,7 @@ void fm_options_frq(uint16_t f_min, bool reserved) {
 
 // Choose between 91 - 92 - 93 etc.
 void fm_options_digit(uint16_t f_min, bool reserved) {
-  char f_str[5];
+  char f_str[10];
   uint16_t f_max;
   // Choose between scan for best freq or select freq
   displayTextLine("Choose digit");
@@ -132,7 +132,7 @@ void fm_options_digit(uint16_t f_min, bool reserved) {
 
 // Choose between 80 - 90 - 100
 void fm_options(uint16_t f_min, uint16_t f_max, bool reserved) {
-  char f_str[5];
+  char f_str[15];
   // Choose between scan for best freq or select freq
   displayTextLine("Choose tens");
   delay(1000);
@@ -194,7 +194,7 @@ void fm_spectrum() {
   int noise_level = 0;
   int SIGNAL_STRENGTH_THRESHOLD = 35;
 
-  tft.fillScreen(TFT_BLACK);
+  tft.fillScreen(bruceConfig.bgColor);
   tft.setTextSize(1);
 
   fm_options(f_min, f_max, false);
@@ -209,7 +209,7 @@ void fm_spectrum() {
       noise_level = radio.currNoiseLevel;
       if (noise_level != 0) {
         // Clear the display area
-        tft.fillRect(0, 40, tftWidth, tftHeight, TFT_BLACK);
+        tft.fillRect(0, 40, tftWidth, tftHeight, bruceConfig.bgColor);
         // Draw waveform based on signal strength
         for (size_t i = 0; i < noise_level; i++) {
           int lineHeight = map(noise_level, 0, SIGNAL_STRENGTH_THRESHOLD, 0, tftHeight/2);
@@ -217,7 +217,7 @@ void fm_spectrum() {
           // Ensure drawing coordinates stay within the box bounds
           int startY = constrain(20 + tftHeight / 2 - lineHeight / 2, 20, 20 + tftHeight);
           int endY = constrain(20 + tftHeight / 2 + lineHeight / 2, 20, 20 + tftHeight);
-          tft.drawLine(lineX, startY, lineX, endY, TFT_PURPLE);
+          tft.drawLine(lineX, startY, lineX, endY, bruceConfig.priColor);
         }
       }
     }

@@ -11,7 +11,6 @@ Information:
     - If the target is near the bluetooth source (smartphone right beside the bluetooth speaker), the communication between them will be weakly affected (we don't do magic)
 
 FLAFS: 
-	USE_NRF24_VIA_SPI ;-> Uncomment to allow this ooption for the user
 	NRF24_CE_PIN=-1   ; Set this pin accordingly
     NRF24_SS_PIN=-1   ; Set this pin accordingly
     NRF24_MOSI_PIN=-1 ; Set this pin accordingly
@@ -21,3 +20,4 @@ FLAFS:
 
 
 void nrf_jammer();
+void nrf_channel_jammer();

@@ -18,9 +18,13 @@
 #include <ArduinoJson.h>
 #include "core/config.h"
 #include "core/startup_app.h"
+#include "core/serial_commands/cli.h"
 
 #if defined(HAS_RTC)
   #include "../lib/RTC/cplus_RTC.h"
+  extern cplus_RTC _rtc;
+  extern RTC_TimeTypeDef _time;
+  extern RTC_DateTypeDef _date;
 #endif
 
 // Declaração dos objetos TFT
@@ -44,6 +48,7 @@
 extern bool interpreter_start;
 
 extern BruceConfig bruceConfig;
+extern SerialCli serialCli;
 extern StartupApp startupApp;
 
 extern char timeStr[10];
@@ -61,6 +66,7 @@ extern int prog_handler;    // 0 - Flash, 1 - LittleFS, 2 - Download
 extern bool sdcardMounted;  // inform if SD Cardis active or not
 
 extern bool wifiConnected;  // inform if wifi is active or not
+extern bool isWebUIActive; // inform if WebUI is active or not
 
 extern volatile int tftWidth;
 extern volatile int tftHeight;
@@ -86,11 +92,14 @@ struct keyStroke { // DO NOT CHANGE IT!!!!!
     bool fn = false;
     bool del = false;
     bool enter = false;
+    bool alt = false;
+    bool ctrl = false;
+    bool gui = false;
     uint8_t modifiers = 0;
     std::vector<char> word;
     std::vector<uint8_t> hid_keys;
     std::vector<uint8_t> modifier_keys;
-    
+
 
     // Clear function
     void Clear() {
@@ -99,6 +108,9 @@ struct keyStroke { // DO NOT CHANGE IT!!!!!
         fn = false;
         del = false;
         enter = false;
+        bool alt = false;
+        bool ctrl = false;
+        bool gui = false;
         modifiers = 0;
         word.clear();
         hid_keys.clear();
@@ -124,8 +136,6 @@ extern keyStroke KeyStroke;
 extern std::vector<Option> options;
 
 extern String fileToCopy;
-
-extern uint8_t buff[1024];
 
 extern const int bufSize;
 
@@ -175,7 +185,7 @@ extern inline bool check(volatile bool &btn) {
   btn=false;
   AnyKeyPress=false;
   return true;
-  
+
 #endif
 }
 
