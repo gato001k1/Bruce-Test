@@ -1,42 +1,42 @@
 #include "IRMenu.h"
 #include "core/display.h"
 #include "core/settings.h"
+#include "core/utils.h"
 #include "modules/ir/TV-B-Gone.h"
+#include "modules/ir/ir_jammer.h"
 #include "modules/ir/custom_ir.h"
 #include "modules/ir/ir_read.h"
-#include "core/utils.h"
 
 void IRMenu::optionsMenu() {
     options = {
-        {"TV-B-Gone", [=]() { StartTvBGone(); }},
-        {"Custom IR", [=]() { otherIRcodes(); }},
-        {"IR Read",   [=]() { IrRead(); }},
+        {"TV-B-Gone", StartTvBGone           },
+        {"Custom IR", otherIRcodes           },
+        {"IR Read",   [=]() { IrRead(); }    },
+        {"IR Jammer", startIrJammer          }, // Simple frequency-adjustable jammer
         {"Config",    [=]() { configMenu(); }},
-        {"Main Menu", [=]() { backToMenu(); }}
     };
+    addOptionToMainMenu();
 
     String txt = "Infrared";
-    txt+=" Tx: " + String(bruceConfig.irTx) + " Rx: " + String(bruceConfig.irRx) + " Rpts: " + String(bruceConfig.irTxRepeats);
-    loopOptions(options,false,true,txt.c_str());
+    txt += " Tx: " + String(bruceConfig.irTx) + " Rx: " + String(bruceConfig.irRx) +
+           " Rpts: " + String(bruceConfig.irTxRepeats);
+    loopOptions(options, MENU_TYPE_SUBMENU, txt.c_str());
 }
 
 void IRMenu::configMenu() {
     options = {
-        {"Ir TX Pin",     [=]() { gsetIrTxPin(true); }},
-        {"Ir RX Pin",     [=]() { gsetIrRxPin(true); }},
-        {"Ir TX Repeats", [=]() { setIrTxRepeats(); }},
-        {"Back",          [=]() { optionsMenu(); }},
+        {"Ir TX Pin", lambdaHelper(gsetIrTxPin, true)},
+        {"Ir RX Pin", lambdaHelper(gsetIrRxPin, true)},
+        {"Ir TX Repeats", setIrTxRepeats},
+        {"Back", [=]() { optionsMenu(); }},
     };
 
-    loopOptions(options,false,true,"IR Config");
+    loopOptions(options, MENU_TYPE_SUBMENU, "IR Config");
 }
 void IRMenu::drawIconImg() {
-    if(bruceConfig.theme.ir) {
-        FS* fs = nullptr;
-        if(bruceConfig.theme.fs == 1) fs=&LittleFS;
-        else if (bruceConfig.theme.fs == 2) fs=&SD;
-        drawImg(*fs, bruceConfig.getThemeItemImg(bruceConfig.theme.paths.ir), 0, imgCenterY, true);
-    }
+    drawImg(
+        *bruceConfig.themeFS(), bruceConfig.getThemeItemImg(bruceConfig.theme.paths.ir), 0, imgCenterY, true
+    );
 }
 void IRMenu::drawIcon(float scale) {
     clearIconArea();
@@ -47,48 +47,45 @@ void IRMenu::drawIcon(float scale) {
     if (iconSize % 2 != 0) iconSize++;
 
     tft.fillRect(
-        iconCenterX - iconSize/2,
-        iconCenterY - iconSize/2,
-        iconSize/6,
-        iconSize,
-        bruceConfig.priColor
+        iconCenterX - iconSize / 2, iconCenterY - iconSize / 2, iconSize / 6, iconSize, bruceConfig.priColor
     );
     tft.fillRect(
-        iconCenterX - iconSize/3,
-        iconCenterY - iconSize/3,
-        iconSize/6,
-        2*iconSize/3,
+        iconCenterX - iconSize / 3,
+        iconCenterY - iconSize / 3,
+        iconSize / 6,
+        2 * iconSize / 3,
         bruceConfig.priColor
     );
 
-    tft.drawCircle(
-        iconCenterX - iconSize/6,
-        iconCenterY,
-        radius,
-        bruceConfig.priColor
-    );
+    tft.drawCircle(iconCenterX - iconSize / 6, iconCenterY, radius, bruceConfig.priColor);
 
     tft.drawArc(
-        iconCenterX - iconSize/6,
+        iconCenterX - iconSize / 6,
         iconCenterY,
-        2.5*radius, 2*radius,
-        220, 320,
+        2.5 * radius,
+        2 * radius,
+        220,
+        320,
         bruceConfig.priColor,
         bruceConfig.bgColor
     );
     tft.drawArc(
-        iconCenterX - iconSize/6,
+        iconCenterX - iconSize / 6,
         iconCenterY,
-        2.5*radius + deltaRadius, 2*radius + deltaRadius,
-        220, 320,
+        2.5 * radius + deltaRadius,
+        2 * radius + deltaRadius,
+        220,
+        320,
         bruceConfig.priColor,
         bruceConfig.bgColor
     );
     tft.drawArc(
-        iconCenterX - iconSize/6,
+        iconCenterX - iconSize / 6,
         iconCenterY,
-        2.5*radius + 2*deltaRadius, 2*radius + 2*deltaRadius,
-        220, 320,
+        2.5 * radius + 2 * deltaRadius,
+        2 * radius + 2 * deltaRadius,
+        220,
+        320,
         bruceConfig.priColor,
         bruceConfig.bgColor
     );

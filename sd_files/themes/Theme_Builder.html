@@ -552,7 +552,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
     <script>
-        const fileNames = ["wifi", "ble", "rf", "rfid", "ir", "fm", "files", "gps", "nrf", "interpreter", "others", "clock", "connect", "config"];
+        const fileNames = ["wifi", "ble","ethernet", "rf", "rfid", "ir", "fm", "files", "gps", "nrf", "interpreter", "others", "clock", "connect", "config"];
         //const fileNames = ["wifi", "ble", "rf"];
         const selectedImages = {};
         const placeholderUrl = "https://via.placeholder.com/150";
@@ -733,12 +733,13 @@
 
                         let fileType = file.type;
                         let fileExtension = fileType.split('/')[1];
+                        const baseName = file.name.substring(0, file.name.lastIndexOf(".")) || file.name;
                         let imageDataUrl = canvas.toDataURL(fileType, quality);
 
                         fetch(imageDataUrl)
                             .then(res => res.blob())
                             .then(blob => {
-                                const fileName = `${name}.${fileExtension}`;
+                                const fileName = `${baseName}.${fileExtension}`;
                                 jsonMapping[name] = fileName;
                                 imageFolder.file(fileName, blob);
                                 totalProcessed++;

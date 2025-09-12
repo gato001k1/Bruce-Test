@@ -35,8 +35,8 @@ public:
 
         // Constructor to initialize defaults
         Message()
-            : dataSize(0), totalBytes(0), bytesSent(0), isFile(false), done(false), ping(false),
-              pong(false) {}
+            : dataSize(0), totalBytes(0), bytesSent(0), isFile(false), done(false), ping(false), pong(false) {
+        }
     };
 
     EspConnection();
@@ -73,7 +73,7 @@ protected:
     void appendPeerToList(const uint8_t *mac);
     void setDstAddress(const uint8_t *address) { memcpy(dstAddress, address, 6); }
 
-    std::string macToString(const uint8_t *mac);
+    String macToString(const uint8_t *mac);
     void printMessage(Message message);
 
     void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);

