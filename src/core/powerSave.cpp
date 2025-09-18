@@ -1,54 +1,64 @@
 #include "powerSave.h"
+#include "display.h"
 #include "settings.h"
 
-/* Turn off the display */
-void turnOffDisplay() {
-  setBrightness(0,false);
-}
-
-/* If the device screen is off, turn on, else just refresh sleep timer */
-bool wakeUpScreen(){
-  previousMillis = millis();
-  if(isScreenOff){
-    isScreenOff = false;
-    dimmer = false;
-    getBrightness();
-    delay(200);
-    return true;
-  }else if(dimmer){
-    dimmer = false;
-    getBrightness();
-    delay(200);
-    return true;
-  } 
-  return false;
-}
-
 /* Check if it's time to put the device to sleep */
-void checkPowerSaveTime(){
-  if(dimmerSet!=0){
-    if((millis() - previousMillis) >= (dimmerSet * 1000) && dimmer == false && isSleeping == false){
-      dimmer = true;
-      setBrightness(5, false);
-    }else if((millis() - previousMillis) >= ((dimmerSet * 1000) + 5000) && isScreenOff == false && isSleeping == false){
-      isScreenOff = true;
-      turnOffDisplay();
+#define SCREEN_OFF_DELAY 5000
+
+void fadeOutScreen(int startValue) {
+    for (int brightValue = startValue; brightValue >= 0; brightValue -= 1) {
+        setBrightness(max(brightValue, 0), false);
+        delay(5);
     }
-  }
+    turnOffDisplay();
 }
 
-/* Put device on sleep mode */
-void sleepModeOn(){
-  isSleeping = true;
-  setCpuFrequencyMhz(80);
-  turnOffDisplay();
-  delay(200);
+void checkPowerSaveTime() {
+    if (bruceConfig.dimmerSet == 0) return;
+
+    unsigned long elapsed = millis() - previousMillis;
+    int startDimmerBright = bruceConfig.bright / 3;
+    int dimmerSetMs = bruceConfig.dimmerSet * 1000;
+
+    if (elapsed >= dimmerSetMs && !dimmer && !isSleeping) {
+        dimmer = true;
+        setBrightness(startDimmerBright, false);
+    } else if (elapsed >= (dimmerSetMs + SCREEN_OFF_DELAY) && !isScreenOff && !isSleeping) {
+        isScreenOff = true;
+        fadeOutScreen(startDimmerBright);
+    }
 }
 
-/* Wake up device */
-void sleepModeOff(){
-  isSleeping = false;
-  setCpuFrequencyMhz(240);
-  getBrightness();
-  delay(200);
+void sleepModeOn() {
+    isSleeping = true;
+    setCpuFrequencyMhz(80);
+
+    int startDimmerBright = bruceConfig.bright / 3;
+
+    fadeOutScreen(startDimmerBright);
+
+
+    panelSleep(true); //  power down screen
+
+
+    disableCore0WDT();
+    disableCore1WDT();
+    disableLoopWDT();
+    delay(200);
+}
+
+void sleepModeOff() {
+    isSleeping = false;
+    setCpuFrequencyMhz(240);
+
+
+    panelSleep(false); // wake the screen back up
+
+
+    getBrightness();
+    enableCore0WDT();
+    enableCore1WDT();
+    enableLoopWDT();
+    feedLoopWDT();
+    delay(200);
 }
